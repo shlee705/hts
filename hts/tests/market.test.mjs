@@ -40,6 +40,34 @@ test('buy cash and sell shares are reserved and restored on cancellation', () =>
   assert.equal(m.availableShares(s.code), 2); assert.throws(() => buy(m, { side: 'sell', quantity: 3 }));
   m.cancelOrder(sell.id); assert.equal(m.availableShares(s.code), 10);
 });
+test('whole-won prices between ticks are recorded on resting buys and filled sells', () => {
+  const m = make();
+  const ticket = { type: 'limit', price: 193003, quantity: 2, requestId: 'between-ticks-buy' };
+  const purchase = buy(m, ticket);
+  assert.equal(purchase.status, 'open');
+  assert.equal(purchase.limit, ticket.price);
+  assert.equal(purchase.remaining, 2);
+  assert.equal(m.cash, INITIAL_CASH);
+  assert.equal(m.availableCash(), INITIAL_CASH - 386006);
+
+  const restored = new Market({ previous: m.checkpoint('closed'), now: m.time });
+  assert.equal(buy(restored, ticket).id, purchase.id);
+  assert.equal(restored.orders.length, 1);
+  assert.equal(restored.orders[0].limit, ticket.price);
+  restored.cancelOrder(purchase.id);
+  assert.equal(restored.availableCash(), INITIAL_CASH);
+
+  const stock = restored.getStock('000660');
+  assert.notEqual(stock.unit, m.getStock('005930').unit);
+  buy(restored, { code: stock.code, quantity: 2 });
+  const salePrice = stock.bids[0][0] - 1;
+  const cashBeforeSale = restored.cash;
+  const sale = buy(restored, { code: stock.code, side: 'sell', type: 'limit', price: salePrice, quantity: 2 });
+  assert.equal(sale.limit, salePrice);
+  assert.equal(sale.filled, 2);
+  assert.equal(sale.average, salePrice);
+  assert.equal(restored.cash, cashBeforeSale + salePrice * 2);
+});
 test('partial fills consume liquidity and limit remainder fills only when price crosses', () => {
   const m = make(), s = m.getStock('005930'); s.asks = [[s.price + s.unit, 2]];
   const order = buy(m, { type: 'limit', price: s.price + s.unit, quantity: 5 });

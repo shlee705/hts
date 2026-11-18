@@ -18,7 +18,7 @@
     <section class="overview" aria-label="시장과 계좌 요약">
       <div class="index-card"><button type="button" id="open-index-chart" aria-label="KOSPI 100 지수 차트 열기" aria-haspopup="dialog" aria-controls="index-dialog" disabled><span class="stat-label">KOSPI 100 <span class="index-chart-link">차트 보기 ↗</span></span><span class="index-quote"><strong id="index-value">—</strong><span id="index-change">—</span></span></button><div class="breadth"><span class="up">상승 <b id="rising">0</b></span><span class="down">하락 <b id="falling">0</b></span><span class="muted">보합 <b id="flat">100</b></span></div></div>
       <div><span class="stat-label">총 평가자산</span><strong id="total-equity">100,000,000<span>원</span></strong></div>
-      <div><span class="stat-label">주문 가능 금액 <a href="/cash" class="cash-link">충전·인출 ↗</a></span><strong id="available-cash">100,000,000<span>원</span></strong></div>
+      <div><span class="stat-label">주문 가능 금액 <a href="/account" class="cash-link">충전·인출 ↗</a></span><strong id="available-cash">100,000,000<span>원</span></strong></div>
       <div><span class="stat-label">보유종목 평가손익</span><strong id="total-profit">0<span>원</span></strong></div>
     </section>
     <div class="workspace" id="workspace">
@@ -82,7 +82,7 @@
           <label class="field-label" for="order-type">주문 유형</label><select id="order-type"><option value="limit">지정가</option><option value="market">시장가</option></select>
           <div id="limit-price-fields"><div class="field-label"><label for="order-price">주문 가격</label><button id="use-current" type="button" class="text-button">현재가 적용</button></div>
           <div class="input-unit"><input id="order-price" type="number" min="1" step="1" required aria-describedby="price-help"><span>원</span></div><small id="price-help" class="field-help">호가를 클릭하면 가격이 입력됩니다.</small></div>
-          <label class="field-label" for="order-quantity">주문 수량</label><div class="input-unit"><input id="order-quantity" type="number" min="1" max="1000000" step="1" value="1" required><span>주</span></div>
+          <label class="field-label" for="order-quantity">주문 수량</label><div class="input-unit"><input id="order-quantity" type="number" min="2" max="1000000" step="1" value="1" required><span>주</span></div>
           <div class="quantity-buttons" aria-label="빠른 수량 선택"><button type="button" data-quantity="1">1주</button><button type="button" data-quantity="10">10주</button><button type="button" data-quantity="100">100주</button><button type="button" id="max-quantity">최대</button></div>
           <div class="order-available"><span id="available-label">매수 가능 금액</span><b id="order-available">—</b></div>
           <div class="order-estimate" id="estimate-row"><span>예상 주문 금액</span><strong id="order-estimate">—</strong></div>

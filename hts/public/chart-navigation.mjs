@@ -59,7 +59,6 @@ export function createChartNavigation(refs, changed) {
   latest.addEventListener('click', () => {
     if (showAll) requestedCapacity = undefined;
     showAll = false;
-    position?.follow();
     changed();
   });
 

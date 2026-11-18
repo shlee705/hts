@@ -110,6 +110,7 @@ function add(group, tag) {
 
 export function createCandleRenderer(refs) {
   const slots = [];
+  const priceRanges = new Map();
   const ticks = Array.from({ length: 4 }, () => {
     const text = document.createElement('span');
     refs['chart-labels'].append(text);
@@ -157,10 +158,16 @@ export function createCandleRenderer(refs) {
       refs.chart.setAttribute('aria-label', `${stock.name} 차트 기록 대기 중`);
       return;
     }
-    let low = Infinity, high = -Infinity;
-    for (const [, , h, l] of bars) { low = Math.min(low, l); high = Math.max(high, h); }
-    const pad = Math.max(stock.unit, (high - low) * 0.12);
-    low -= pad; high += pad;
+    const series = view.code + '/' + view.period;
+    let range = priceRanges.get(series);
+    if (!range) {
+      let min = Infinity, max = -Infinity;
+      for (const [, , h, l] of bars) { min = Math.min(min, l); max = Math.max(max, h); }
+      const pad = Math.max(stock.unit, (max - min) * 0.12);
+      range = { low: min - pad, high: max + pad };
+      priceRanges.set(series, range);
+    }
+    const { low, high } = range;
     const y = p => 7 + (high - p) / (high - low) * 151;
     const slotWidth = 536 * duration / span;
     const x = i => timeX(bars[i][0] + duration / 2);

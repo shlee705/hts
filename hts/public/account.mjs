@@ -30,7 +30,8 @@ function renderAccount() {
     for (const p of positions) {
       const row = cellRow(positionRows, p.code, refs['positions-body'], 8), cells = row.children;
       if (!cells[0].children.length) {
-        cells[0].innerHTML = '<a class="name-button name"></a><small></small>'; cells[0].firstChild.href = '/?symbol=' + encodeURIComponent(p.code);
+        cells[0].innerHTML = '<a class="name-button name"></a><small></small>';
+        cells[0].firstChild.href = '/';
         cells[7].innerHTML = '<button>매도</button>'; cells[7].firstChild.dataset.sell = p.code;
       }
       text(cells[0].firstChild, stocks.get(p.code).name); text(cells[0].lastChild, p.code);
@@ -124,7 +125,6 @@ for (const [id, tab] of [['positions-tab','positions'], ['orders-tab','orders'],
     history.pushState(null, '', url); setAccountMode(tab);
   };
 }
-window.addEventListener('popstate', readTab);
 refs['account-panel'].addEventListener('click', async event => {
   const b = event.target.closest('button');
   if (!b || b.disabled) return;

@@ -236,8 +236,8 @@ export class Market {
     this.prints=[];
     const s = this.getStock(code);
     const levels = side === 'buy' ? s.asks : s.bids;
+    // V-04: accept whole-won limit orders between quoted price levels.
     const limit = type === 'market' ? (side === 'buy' ? s.upperLimit : s.lowerLimit) : bound(terms.limit,s.lowerLimit,s.upperLimit);
-    if (!Number.isSafeInteger(limit) || limit < s.unit || limit % s.unit) throw orderError(`주문 가격은 ${s.unit.toLocaleString('ko-KR')}원 단위로 입력하세요.`);
     if (side === 'buy' && limit * quantity > this.availableCash()) throw orderError('주문 가능 금액이 부족합니다.');
     if (side === 'sell' && quantity > this.availableShares(code)) throw orderError('매도 가능 수량이 부족합니다.');
     if (this.orders.filter(o => o.remaining && o.status !== 'cancelled').length >= 100) {
@@ -270,17 +270,18 @@ export class Market {
     for (let i=0; order.remaining && (i<levels.length || appendLevel(levels)); i++) {
       const level = levels[i];
       if (!order.remaining || (order.side === 'buy' ? level[0] > order.limit : level[0] < order.limit)) break;
+      const fillPrice = order.type === 'limit' ? order.limit : level[0];
       let quantity = Math.min(order.remaining, level[1]);
-      quantity = Math.min(quantity, order.side === 'buy' ? Math.floor(Math.max(0, this.availableCash(order.id)) / level[0]) : Math.max(0, this.availableShares(order.code, order.id)));
+      quantity = Math.min(quantity, order.side === 'buy' ? Math.floor(Math.max(0, this.availableCash(order.id)) / fillPrice) : Math.max(0, this.availableShares(order.code, order.id)));
       if (!quantity) continue;
-      const value = level[0] * quantity;
+      const value = fillPrice * quantity;
       let h = this.holdings.get(order.code);
       if (order.side === 'buy') {
         this.cash -= value;
         if (!h) { h = { code: order.code, quantity: 0, average: 0 }; this.holdings.set(order.code, h); }
         h.average = (h.quantity * h.average + value) / (h.quantity + quantity); h.quantity += quantity;
       } else {
-        this.cash += value; this.realized += (level[0] - h.average) * quantity;
+        this.cash += value; this.realized += (fillPrice - h.average) * quantity;
         h.quantity -= quantity; if (!h.quantity) this.holdings.delete(order.code);
       }
       order.average = (order.average * order.filled + value) / (order.filled + quantity);
@@ -288,7 +289,7 @@ export class Market {
       if (!level[1]) exhausted++;
       const price=level[0], time=Math.max(this.time,order.time);
       s.direction=Math.sign(price-s.price); s.price=price; s.low=Math.min(s.low,price); s.high=Math.max(s.high,price);
-      s.volume+=quantity; s.turnover+=value; this.prints.push([s.code,price,quantity]);
+      s.volume+=quantity; s.turnover+=price*quantity; this.prints.push([s.code,price,quantity]);
       s.trades.unshift({time,price,quantity,side:order.side}); s.trades.length=Math.min(30,s.trades.length);
       s.history.push({time,price,volume:quantity}); if(s.history.length>180)s.history.shift();
     }
