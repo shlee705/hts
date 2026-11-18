@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10141c"><meta name="description" content="계좌 보유 잔고와 주문내역 조회">
+  <title>내 계좌 · PULSE</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
+  <script type="module" src="/account.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="PULSE 홈"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 18h6l4-12 6 21 4-13h6"/></svg>PULSE<span>mini HTS</span></a>
+    <nav aria-label="메인 메뉴"><a href="/">트레이딩</a><a href="/account" class="active" aria-current="page">내 계좌</a><a href="/cash">예수금 관리</a></nav>
+    <div class="top-right"><span class="connection" id="connection"><i></i><span id="connection-text">연결 중</span></span><span class="avatar" aria-label="계좌">P</span></div>
+  </header>
+  <main>
+    <section class="page-heading"><h1>내 계좌</h1><a class="cash-link" href="/cash">예수금 충전·인출 ↗</a></section>
+    <section class="overview" aria-label="계좌 요약">
+      <div><span class="stat-label">총 평가자산</span><strong id="account-equity">—</strong></div>
+      <div><span class="stat-label">예수금</span><strong id="account-cash">—</strong></div>
+      <div><span class="stat-label">주문 가능 금액</span><strong id="account-available">—</strong></div>
+      <div><span class="stat-label">보유종목 평가손익</span><strong id="account-profit">—</strong></div>
+    </section>
+    <section class="panel account-panel" id="account-panel" aria-label="잔고와 주문내역">
+      <div class="account-tabs" role="group" aria-label="계좌 조회"><button id="positions-tab" class="selected" aria-pressed="true">보유 잔고 <span id="position-count">0</span></button><button id="orders-tab" aria-pressed="false">주문내역 <span id="order-count">0</span></button><button id="open-orders-tab" aria-pressed="false">미체결 <span id="open-count">0</span></button><span class="account-tab-note">단위: 원 · 수수료·세금 미적용</span></div>
+      <div class="account-table-wrap"><table id="positions-table"><thead><tr><th>종목명</th><th>보유 / 매도가능</th><th>평균 매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th></th></tr></thead><tbody id="positions-body"></tbody></table><table id="orders-table" hidden><thead><tr><th>주문번호 / 시간</th><th>종목명</th><th>구분</th><th>주문가</th><th>주문 / 체결</th><th>평균 체결가</th><th>상태</th><th></th></tr></thead><tbody id="orders-body"></tbody></table></div>
+      <div id="account-empty" class="account-empty" hidden><span>▤</span><strong>아직 보유한 종목이 없습니다</strong><p>관심 있는 종목을 찾아 첫 주문을 시작해 보세요.</p></div>
+    </section>
+  </main>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

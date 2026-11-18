@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10141c"><meta name="description" content="KOSPI 100종목을 위한 작은 트레이딩 터미널. 실시간 시세, 관심종목, 호가와 주문.">
+  <title>PULSE — 트레이딩 터미널</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="PULSE 홈"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 18h6l4-12 6 21 4-13h6"/></svg>PULSE<span>mini HTS</span></a>
+    <nav aria-label="메인 메뉴"><a href="/" class="active" aria-current="page">트레이딩</a><a href="/account">내 계좌</a><a href="/cash">예수금 관리</a></nav>
+    <div class="top-right"><span class="connection" id="connection"><i></i><span id="connection-text">연결 중</span></span><span class="avatar" aria-label="계좌">P</span></div>
+  </header>
+  <main>
+    <section class="page-heading"><div><div class="eyebrow">YOUR MARKET, AT A GLANCE</div><h1>주식 트레이딩<span>KOSPI</span></h1></div><div class="heading-meta"><span id="market-clock">--:--:--</span><span class="muted">서버 시세 · KST</span></div></section>
+    <section class="overview" aria-label="시장과 계좌 요약">
+      <div class="index-card"><button type="button" id="open-index-chart" aria-label="KOSPI 100 지수 차트 열기" aria-haspopup="dialog" aria-controls="index-dialog" disabled><span class="stat-label">KOSPI 100 <span class="index-chart-link">차트 보기 ↗</span></span><span class="index-quote"><strong id="index-value">—</strong><span id="index-change">—</span></span></button><div class="breadth"><span class="up">상승 <b id="rising">0</b></span><span class="down">하락 <b id="falling">0</b></span><span class="muted">보합 <b id="flat">100</b></span></div></div>
+      <div><span class="stat-label">총 평가자산</span><strong id="total-equity">100,000,000<span>원</span></strong></div>
+      <div><span class="stat-label">주문 가능 금액 <a href="/cash" class="cash-link">충전·인출 ↗</a></span><strong id="available-cash">100,000,000<span>원</span></strong></div>
+      <div><span class="stat-label">보유종목 평가손익</span><strong id="total-profit">0<span>원</span></strong></div>
+    </section>
+    <div class="workspace" id="workspace">
+      <aside class="panel watch-panel" aria-label="종목 검색과 관심종목">
+        <div class="panel-heading"><h2>종목 탐색</h2><span class="muted" id="result-count">100종목</span></div>
+        <div class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input id="search" type="search" placeholder="종목명 또는 코드 검색" aria-label="종목명 또는 코드 검색" autocomplete="off"><kbd>/</kbd></div>
+        <div class="tabbar" role="group" aria-label="종목 목록 필터"><button id="all-tab" class="selected" aria-pressed="true">전체 종목</button><button id="favorites-tab" aria-pressed="false">관심종목 <span id="favorite-count">0</span></button></div>
+        <div class="list-heading"><span>종목명</span><label for="sort">정렬</label><select id="sort" aria-label="종목 정렬"><option value="rank">시가총액순</option><option value="up">상승률순</option><option value="down">하락률순</option><option value="volume">거래량순</option></select></div>
+        <div id="stock-list" class="stock-list" aria-label="종목 목록"></div>
+        <div id="empty-search" class="empty" hidden>검색 결과가 없습니다.</div>
+        <div class="list-footer"><span class="tiny-dot"></span>KOSPI 100 구성종목</div>
+      </aside>
+      <section class="center-column" aria-label="선택 종목 시세">
+        <div class="panel quote-panel">
+          <div class="stock-title"><div class="stock-monogram" id="stock-monogram">S</div><div><div class="stock-name-line"><h2 id="stock-name">삼성전자</h2><button id="selected-favorite" class="star" aria-label="삼성전자 관심종목 추가" aria-pressed="false">☆</button></div><span class="muted"><span id="stock-code">005930</span> <span class="code-divider">|</span> KOSPI</span></div></div>
+          <div class="quote-line"><strong id="current-price">—</strong><span id="price-change">—</span><b id="limit-badge" hidden></b></div>
+          <div class="quote-facts">
+            <span>기준 종가 <b id="previous-close">—</b></span>
+            <span>고가 <b id="high-price" class="up">—</b></span>
+            <span>저가 <b id="low-price" class="down">—</b></span>
+            <span>거래량 <b id="volume">—</b></span>
+            <span>상한가 <b id="upper-limit" class="up">—</b></span>
+            <span class="fact-divider">하한가 <b id="lower-limit" class="down">—</b></span>
+            <span class="fact-divider quote-market-cap" title="2026-11-18 발행주식수(천주 단위) × 현재가">시가총액 <b id="market-cap">—</b></span>
+          </div>
+          <div id="shared-chart">
+          <div class="chart-toolbar">
+            <div id="chart-periods" role="group" aria-label="차트 주기"><button type="button" data-period="1m" aria-pressed="true">1분</button><button type="button" data-period="3m" aria-pressed="false">3분</button><button type="button" data-period="5m" aria-pressed="false">5분</button><button type="button" data-period="30m" aria-pressed="false">30분</button><button type="button" data-period="1h" aria-pressed="false">1시간</button><button type="button" data-period="1d" aria-pressed="false">일</button></div>
+            <button type="button" id="open-stock-chart" aria-haspopup="dialog" aria-controls="stock-dialog" disabled>자세히 보기 ↗</button>
+            <details id="chart-settings"><summary>차트 설정</summary><div class="chart-options"><label>유형 <select id="chart-style"><option value="bars">캔들</option><option value="line">종가선</option></select></label></div></details>
+          </div>
+          <div id="chart-ohlc" aria-label="표시 구간 마지막 봉 시가 고가 저가 종가"></div>
+          <div class="chart-wrap" id="chart-viewport"><svg id="chart" viewBox="0 0 620 175" role="img" aria-label="차트 기록 대기 중" preserveAspectRatio="none">
+            <g id="chart-content">
+              <g id="chart-grid"></g>
+              <path id="chart-day-dividers" fill="none" stroke="white" stroke-opacity=".8" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+              <g id="chart-bars"></g>
+              <path id="chart-close-line" fill="none" stroke="#62cab9" stroke-width="2" vector-effect="non-scaling-stroke"/>
+            </g>
+          </svg><div id="chart-labels" aria-hidden="true"></div><div id="chart-empty">첫 시세를 기다리고 있습니다</div></div>
+          <div class="chart-times" id="chart-times" title="한국 시간 (KST)"><span id="chart-start">—</span><div id="chart-time-ticks" aria-label="한국 시간 눈금"></div><button type="button" id="retry-chart" hidden>차트 다시 불러오기</button><span id="chart-finish">—</span></div>
+          <div id="chart-pan-controls">
+            <input id="chart-pan" type="range" min="0" max="0" value="0" step="1" aria-label="차트 표시 구간" aria-controls="chart">
+            <button id="chart-zoom-out" type="button" aria-label="차트 축소" title="축소" disabled>−</button>
+            <button id="chart-zoom-in" type="button" aria-label="차트 확대" title="확대" disabled>+</button>
+            <button id="chart-all" type="button" aria-controls="chart" disabled>전체 기간</button>
+            <button id="chart-latest" type="button" aria-controls="chart" disabled>최신으로</button>
+          </div>
+          </div>
+        </div>
+        <div class="market-depth">
+          <section class="panel orderbook-panel"><div class="panel-heading"><h2>호가</h2><span class="muted">10단계 · 원</span></div><div class="book-head"><span>매도 잔량</span><span>가격</span><span>매수 잔량</span></div><div id="orderbook"></div><div class="book-total"><span id="ask-total" class="down">—</span><span>총 잔량</span><span id="bid-total" class="up">—</span></div></section>
+          <section class="panel trades-panel"><div class="panel-heading"><h2>실시간 체결</h2><span class="live-dot"></span></div><div class="trades-head"><span>시간</span><span>체결가</span><span>수량</span></div><div id="trades"></div><div id="empty-trades" class="empty">체결 대기 중</div></section>
+        </div>
+      </section>
+      <aside class="panel order-panel" aria-label="주식 주문">
+        <div class="panel-heading"><h2>주문하기</h2></div>
+        <div class="account-label"><span class="account-icon">P</span><div>기본 계좌<small>100-0001 · 공동 테스트 계좌</small></div></div>
+        <div class="side-tabs" role="group" aria-label="주문 구분"><button id="buy-tab" aria-pressed="true" class="buy selected">매수</button><button id="sell-tab" aria-pressed="false" class="sell">매도</button></div>
+        <form id="order-form" novalidate>
+          <label class="field-label" for="order-type">주문 유형</label><select id="order-type"><option value="limit">지정가</option><option value="market">시장가</option></select>
+          <div id="limit-price-fields"><div class="field-label"><label for="order-price">주문 가격</label><button id="use-current" type="button" class="text-button">현재가 적용</button></div>
+          <div class="input-unit"><input id="order-price" type="number" min="1" step="1" required aria-describedby="price-help"><span>원</span></div><small id="price-help" class="field-help">호가를 클릭하면 가격이 입력됩니다.</small></div>
+          <label class="field-label" for="order-quantity">주문 수량</label><div class="input-unit"><input id="order-quantity" type="number" min="1" max="1000000" step="1" value="1" required><span>주</span></div>
+          <div class="quantity-buttons" aria-label="빠른 수량 선택"><button type="button" data-quantity="1">1주</button><button type="button" data-quantity="10">10주</button><button type="button" data-quantity="100">100주</button><button type="button" id="max-quantity">최대</button></div>
+          <div class="order-available"><span id="available-label">매수 가능 금액</span><b id="order-available">—</b></div>
+          <div class="order-estimate" id="estimate-row"><span>예상 주문 금액</span><strong id="order-estimate">—</strong></div>
+          <small id="market-fill-help" class="field-help" hidden></small>
+          <p id="order-error" class="form-error" role="alert" hidden></p>
+          <div id="order-recovery" hidden><p id="order-progress" role="status"></p><button type="button" id="check-order" hidden>결과 다시 확인</button> <button type="button" id="retry-order" hidden>같은 주문 다시 전송</button></div>
+          <button type="submit" id="submit-order" class="submit buy" disabled>매수 주문</button>
+        </form>
+        <section class="trade-open-orders" aria-labelledby="open-order-title">
+          <h3 id="open-order-title">미체결 주문</h3>
+          <p id="open-order-empty">주문내역을 불러오는 중입니다.</p>
+          <ul id="trade-open-list"></ul>
+        </section>
+        <div class="order-note"><span class="note-icon">i</span><p>호가창에는 매수·매도 각 10단계를 표시합니다. 주문은 가격제한폭 안에서 유리한 호가부터 체결되며, 시장가 주문의 미체결 잔량은 매수 시 상한가, 매도 시 하한가에 대기합니다.</p></div>
+        <a class="order-history-link" href="/account?tab=orders">주문내역 보기 ↗</a>
+        <div class="reference-note"><span>기준 종가</span><b id="reference-date">2026.11.18</b><button id="source-button" class="text-button">데이터 안내 ↗</button></div>
+      </aside>
+    </div>
+    <footer><span><i class="tiny-dot"></i><span id="footer-status">시세 서버 연결 중</span><span class="footer-divider">|</span><span id="tick-counter">TICK 0</span></span><span>PULSE <span class="muted">/</span> 작은 화면, 살아 있는 시장.</span></footer>
+  </main>
+  <div id="toast" role="status" hidden></div>
+  <dialog id="stock-dialog" aria-labelledby="stock-dialog-title">
+    <div class="dialog-header"><h2 id="stock-dialog-title">종목 차트</h2><button id="close-stock-chart" type="button" aria-label="종목 차트 닫기" autofocus>×</button></div>
+    <div id="stock-chart-mount"></div>
+  </dialog>
+  <dialog id="index-dialog" aria-labelledby="index-dialog-title">
+    <div class="dialog-header"><h2 id="index-dialog-title">KOSPI 100 지수 차트</h2><button type="button" id="close-index-chart" aria-label="지수 차트 닫기" autofocus>×</button></div>
+    <div class="index-dialog-quote"><strong id="dialog-index-value">—</strong><span id="dialog-index-change">—</span></div>
+    <div id="index-chart-mount"></div>
+  </dialog>
+  <dialog id="data-dialog"><div class="dialog-header"><h2>시세 데이터 안내</h2><button id="close-dialog" aria-label="안내 닫기">×</button></div><p>2026년 11월 5~18일의 KOSPI 100 구성종목과 지수 시세를 기준 기록으로 사용합니다. 11월 18일 종가 이후의 가격과 지수는 이 서버의 독립 시장에서 결정됩니다.</p><p>주말을 포함해 24시간 연속매매합니다. 일봉은 한국시간 오전 9시부터 다음 날 오전 9시 직전까지의 시가·고가·저가·종가와 거래량입니다.</p><p>국내 종목의 기준 종가는 Yahoo Finance, 지수 일봉은 네이버 증권, 지수 구성종목은 KRX:KOSPI100 구성종목 자료를 사용합니다.</p></dialog>
+</body>
+</html>

@@ -1,0 +1,6 @@
+data/
+.qa-ui/
+data-preview/
+.cutover-backups/
+.test-runs/
+node_modules/
