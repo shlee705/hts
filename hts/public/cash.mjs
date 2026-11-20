@@ -8,6 +8,7 @@ function updateControls() {
   el('apply').disabled = !current || !!pending || busy;
   el('direction').disabled = !!pending || busy;
   el('amount').disabled = !!pending || busy;
+  el('amount').pattern = el('direction').value === 'deposit' ? '-?[0-9]+' : '[0-9]+';
   el('cash-retry').hidden = !pending;
   el('cash-retry').disabled = busy;
   el('apply').textContent = el('direction').value === 'deposit' ? '충전 요청' : '인출 요청';
@@ -55,7 +56,10 @@ async function submitPending() {
   busy = true; updateControls();
   el('cash-message').textContent = '서버 확인 중';
   try {
-    const res = await fetch('/api/cash', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pending), signal:AbortSignal.timeout(12000) });
+    const operation = pending.direction === 'deposit' && pending.amount < 0
+      ? { ...pending, direction:'withdraw', amount:-pending.amount }
+      : pending;
+    const res = await fetch('/api/cash', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(operation), signal:AbortSignal.timeout(12000) });
     const data = await res.json();
     if (!res.ok || data.ok !== true) {
       if (res.status === 400 || res.status === 409) {
@@ -76,8 +80,11 @@ el('cash-form').onsubmit = event => {
   event.preventDefault();
   if (busy || pending || !current) return;
   const amount = Number(el('amount').value);
-  if (!Number.isSafeInteger(amount) || amount < 1) { el('cash-message').textContent = '1원 이상의 정수 금액을 입력하세요.'; return; }
-  const op = { direction:el('direction').value, amount, revision:current.revision, requestId:crypto.randomUUID() };
+  const direction = el('direction').value;
+  if (!Number.isSafeInteger(amount) || amount === 0 || (direction === 'withdraw' && amount < 0)) {
+    el('cash-message').textContent = '1원 이상의 정수 금액을 입력하세요.'; return;
+  }
+  const op = { direction, amount, revision:current.revision, requestId:crypto.randomUUID() };
   try { sessionStorage.setItem(key, JSON.stringify(op)); }
   catch { el('cash-message').textContent = '요청 번호를 보관할 수 없습니다. 브라우저 저장소 사용을 허용하세요.'; return; }
   pending = op;

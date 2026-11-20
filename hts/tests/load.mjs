@@ -16,7 +16,7 @@ const readCounts = { state: 0, candles: 0, cash: 0, orderLookup: 0 };
 function recordError(error) { errors++; firstError ??= error.message; }
 function stream(i, paused = false) {
   return new Promise((resolve, reject) => {
-    const req = http.get(server.url + `/api/events?symbol=${STOCKS[i % 100].code}`, res => {
+    const req = http.get(server.url + `/api/events?symbol=${STOCKS[i % STOCKS.length].code}`, res => {
       if (res.statusCode !== 200) return reject(Error(`SSE status ${res.statusCode}`));
       responses.push(res);
       if (paused) res.pause();
@@ -48,7 +48,7 @@ try {
           }
         } else if (name === 'cash') {
           assert.ok(Number.isSafeInteger(data.cash) && data.available <= data.cash && data.available >= 0);
-        } else assert.equal(data.stocks.length, 100);
+        } else assert.equal(data.stocks.length, 10);
         readCounts[name]++; reads.push(performance.now() - began);
       } catch (error) { recordError(error); }
       await sleep(40);

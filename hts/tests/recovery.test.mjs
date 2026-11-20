@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Market } from '../market.mjs';
 import { validateCheckpoint } from '../checkpoint.mjs';
+import { OrderArchive } from '../order-archive.mjs';
 import { tempData, launch, stop, get, post } from './helpers.mjs';
 
 test('two simultaneous recoveries leave one writer and preserve the acknowledged order', { timeout: 25000 }, async t => {
@@ -37,6 +38,52 @@ function withReservations() {
   market.placeOrder({ ...buy, side: 'sell', type: 'limit', quantity: 2, price: stock.asks.at(-1)[0], requestId: 'restore-sell' });
   return market.checkpoint('running');
 }
+
+test('the ten-stock market forks an old account without replaying orders or using its index history', async t => {
+  const dir = await tempData('hundred-to-ten');
+  const original = withReservations();
+  original.account.nextOrderId = 101;
+  for (let i = 0; i < 90; i++) {
+    const code = String(970000 + i);
+    original.prices[code] = 1000;
+    original.units[code] = 1;
+  }
+  original.index = { ...original.index, constituents: 100, name: 'KOSPI 100', value: 6117.19 };
+  const source = path.join(dir, 'market-state.json'), bytes = JSON.stringify(original);
+  await writeFile(source, bytes);
+  await writeFile(path.join(dir, 'candles.json'), 'unrelated old market archive');
+  const archived = { ...original.account.orders[0], id:'P000100', code:'970000', requestId:'old-completed-receipt' };
+  await new OrderArchive(dir, op => op()).save(archived.requestId, { order: archived });
+  const args = { port: 18463, interval: 60000, dataDir: dir };
+  let server = await launch(args);
+  t.after(() => stop(server));
+  for (let session = 0; session < 2; session++) {
+    if (session) server = await launch(args);
+    const state = await get(server);
+    assert.equal(state.stocks.length, 10);
+    assert.equal(state.index.constituents, 10);
+    assert.equal(state.index.base, 1000);
+    assert.equal(state.account.cash, original.account.cash);
+    assert.equal(state.account.positions[0].available, 1);
+    assert.deepEqual(state.orders.toReversed(), original.account.orders);
+    assert.equal((await get(server, '/api/orders/requests/' + archived.requestId)).id, archived.id);
+    await stop(server);
+    assert.equal(await readFile(source,'utf8'), bytes);
+    const active = JSON.parse(await readFile(path.join(dir,'kospi10','market-state.json'), 'utf8'));
+    assert.deepEqual(active.account, original.account);
+  }
+  const otherDir = await tempData('delisted-holding');
+  original.account.holdings.push({code:'970001', quantity:1, average:1000});
+  const oldBytes = JSON.stringify(original);
+  await writeFile(path.join(otherDir,'market-state.json'), oldBytes);
+  server = await launch({...args, dataDir:otherDir});
+  const alternate = await get(server);
+  assert.equal(alternate.account.cash, 100_000_000);
+  assert.deepEqual(alternate.account.positions, []);
+  assert.deepEqual(alternate.orders, []);
+  await stop(server);
+  assert.equal(await readFile(path.join(otherDir,'market-state.json'),'utf8'), oldBytes);
+});
 
 test('valid JSON with inconsistent order, inventory or cash fields is rejected before recovery', async () => {
   const valid = withReservations();

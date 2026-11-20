@@ -7,11 +7,12 @@ const positive = n => whole(n) && n > 0;
 const timestamp = n => whole(n) && n <= 8640000000000000;
 const requestId = id => typeof id === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(id);
 
-export function validStoredOrder(order) {
+export function validStoredOrder(order, members = codes) {
   if (!order || typeof order.id !== 'string' || !/^P\d{6,}$/.test(order.id)) return false;
   const sequence = Number(order.id.slice(1));
   if (!positive(sequence) || order.id !== 'P' + String(sequence).padStart(6, '0')) return false;
-  if (!codes.has(order.code) || !requestId(order.requestId) || !timestamp(order.time)) return false;
+  if (typeof order.code !== 'string' || !/^[A-Z0-9]{6}$/.test(order.code) || (members && !members.has(order.code)) ||
+      !requestId(order.requestId) || !timestamp(order.time)) return false;
   if (!['buy', 'sell'].includes(order.side) || !['market', 'limit'].includes(order.type)) return false;
   if (!positive(order.limit) || !positive(order.quantity) || order.quantity > 1_000_000) return false;
   if (!whole(order.filled) || !whole(order.remaining) || order.quantity !== order.filled + order.remaining) return false;
@@ -40,16 +41,17 @@ function validateCashOperation(account) {
       !timestamp(operation.time)) invalid('lastCashOperation');
 }
 
-export function validateCheckpoint(state) {
+export function validateCheckpoint(state, members = codes) {
   if (state?.version !== 1 || !['running', 'closed'].includes(state.status) || !timestamp(state.updatedAt)) invalid('상태·시각');
   if (state.status === 'closed' && (typeof state.closedAt !== 'string' || !Number.isFinite(Date.parse(state.closedAt)))) invalid('종료 시각');
-  for (const code of codes) {
+  if (Object.keys(state.prices ?? {}).length !== members.size) invalid('구성 종목');
+  for (const code of members) {
     const price = state.prices?.[code];
     if (!positive(price)) invalid('종가');
     if (state.units !== undefined && (!units.has(state.units?.[code]) || price % state.units[code] !== 0)) invalid('호가 단위');
   }
   for (const [code, book] of Object.entries(state.consumedBooks ?? {})) {
-    if (!codes.has(code)) invalid('호가 종목');
+    if (!members.has(code)) invalid('호가 종목');
     for (const side of ['asks','bids']) {
       const depth = book?.[side], direction = side === 'asks' ? 1 : -1;
       const step = direction * state.units?.[code];
@@ -70,7 +72,7 @@ export function validateCheckpoint(state) {
   validateCashOperation(account);
   const shares = new Map();
   for (const holding of account.holdings) {
-    if (!codes.has(holding?.code) || shares.has(holding.code) || !positive(holding.quantity) ||
+    if (!members.has(holding?.code) || shares.has(holding.code) || !positive(holding.quantity) ||
         !Number.isFinite(holding.average) || holding.average <= 0) invalid('보유 종목');
     shares.set(holding.code, holding.quantity);
   }
@@ -78,7 +80,7 @@ export function validateCheckpoint(state) {
   let availableCash = account.cash;
   let openOrders = 0;
   for (const order of account.orders) {
-    if (!validStoredOrder(order) || orderIds.has(order.id) || requests.has(order.requestId) ||
+    if (!validStoredOrder(order, members) || orderIds.has(order.id) || requests.has(order.requestId) ||
         Number(order.id.slice(1)) >= account.nextOrderId) invalid('주문');
     orderIds.add(order.id);
     requests.add(order.requestId);

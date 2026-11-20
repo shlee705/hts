@@ -19,14 +19,13 @@ const j=await get('https://api.stock.naver.com/chart/domestic/'+kind+'/'+code+'/
 return j.map(x=>{const d=x.localDateTime||x.localDate;const t=Date.parse(d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8)+'T'+(d.slice(8,10)||'00')+':'+(d.slice(10,12)||'00')+':00+09:00');return [t,x.openPrice,x.highPrice,x.lowPrice,x.currentPrice??x.closePrice,x.accumulatedTradingVolume]}).filter(valid);
 }
 async function run(){
-while(cursor<=members.data.length){const i=cursor++;const m=members.data[i];const code=m?.d[0]??'KPI100';
+while(cursor<members.data.length){const i=cursor++;const m=members.data[i];const code=m.d[0];
 try{
-let days,minutes=[];
-if(m){days=await yahoo(code,first,end,'1d'); for(let a=first;a<end;a+=6*per){try{minutes.push(...await yahoo(code,a,Math.min(end,a+6*per),'1m'))}catch{}}
+const days=await yahoo(code,first,end,'1d'); let minutes=[];
+for(let a=first;a<end;a+=6*per){try{minutes.push(...await yahoo(code,a,Math.min(end,a+6*per),'1m'))}catch{}}
 if(minutes.length===0)minutes=await naver(code,'item','minute');
 const basic=await get('https://m.stock.naver.com/api/stock/'+code+'/basic');
 list[i]={code,name:basic.stockName,shares:Math.round(m.d[2]),rank:i+1,close:days.at(-1)?.[4]};
-}else{days=await naver(code,'index','day');minutes=await naver(code,'index','minute')}
 if(days.length!==10)throw Error('daily count '+days.length);
 daily[code]=days.map(([t,...v])=>[dayKey(t),...v]);
 const within=minutes.filter(([t])=>{const k=(t+32400000)%86400000;return k>=32400000&&k<=55800000&&t>=first*1000&&t<end*1000});
@@ -34,4 +33,6 @@ await mkdir(new URL('minutes/',root),{recursive:true});await writeFile(new URL('
 }catch(e){failures.push([code,e.message])}}
 }
 await Promise.all(Array.from({length:5},run));console.log('collected',Object.keys(daily).length,'failures',failures);
+if(failures.length)throw Error('Incomplete constituent collection.');
 await writeFile(new URL('daily.json',root),JSON.stringify(daily));await writeFile(new URL('members.json',root),JSON.stringify(list));
+await import('./build-continuous.mjs');

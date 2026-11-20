@@ -63,7 +63,7 @@ test('reopening a real server serves all six prior candle series before the firs
 test('quote capacity and limits use real per-issue shares and one consistent session price grid', () => {
   const market = new Market();
   const quotes = market.state().stocks;
-  assert.equal(quotes.length,100);
+  assert.equal(quotes.length,10);
   for (const s of quotes) {
     assert.ok(Number.isSafeInteger(s.shares) && s.shares > 0);
     assert.ok(Number.isSafeInteger(s.shares*s.price));

@@ -1,4 +1,4 @@
-import { STOCKS } from './market-data.mjs';
+import { INDEX_CODE, INDEX_NAME, STOCKS } from './market-data.mjs';
 import { createQuoteFeed, createOrderEntry, fillableQuantity } from './order-entry.mjs';
 import { createCandleHistory, createCandleRenderer, periods } from './candle-chart.mjs';
 import { createChartNavigation } from './chart-navigation.mjs';
@@ -54,7 +54,7 @@ const chartHistory = createCandleHistory(async (code, period, signal) => {
   return response.json();
 }, scheduleRender);
 const paintChart = createCandleRenderer(refs);
-const indexChart = { code: 'KPI100', name: 'KOSPI 100', unit: 0.01, format: indexNumber };
+const indexChart = { code: INDEX_CODE, name: INDEX_NAME, unit: 0.01, format: indexNumber };
 const indexDialog = refs['index-dialog'];
 const stockChartMount = refs['shared-chart'].parentElement;
 const chartNavigation = createChartNavigation(refs, drawChart);
@@ -231,14 +231,14 @@ function updateStars() {
 }
 function toggleFavorite(code) {
   favorites.has(code) ? favorites.delete(code) : favorites.add(code);
-  try { localStorage.setItem('pulse.favorites.v1', JSON.stringify([...favorites])); } catch { toast('이 브라우저에서는 관심종목을 영구 저장할 수 없습니다.'); }
   updateStars(); filterList();
 }
 function filterList() {
   const query = refs.search.value.trim().toLocaleLowerCase().replaceAll(' ', ''); visibleCodes.clear();
+  const invalidCode = /^\d[a-z\d]{5}$/.test(query) && /[a-z]/.test(query);
   let count = 0;
   for (const stock of STOCKS) {
-    const show = (listMode === 'all' || favorites.has(stock.code)) && `${stock.name}${stock.code}`.toLocaleLowerCase().replaceAll(' ', '').includes(query);
+    const show = !invalidCode && (listMode === 'all' || favorites.has(stock.code)) && `${stock.name}${stock.code}`.toLocaleLowerCase().replaceAll(' ', '').includes(query);
     stockRows.get(stock.code).row.hidden = !show;
     if (show) { count++; visibleCodes.add(stock.code); }
   }
@@ -280,7 +280,7 @@ function render() {
     if (!visibleCodes.has(q.code)) continue;
     const r = stockRows.get(q.code); text(r.price, fmt(q.price)); text(r.change, pct((q.price / q.prev - 1) * 100)); color(r.price, q.price - q.prev); color(r.change, q.price - q.prev);
   }
-  text(refs.rising, up); text(refs.falling, down); text(refs.flat, 100 - up - down);
+  text(refs.rising, up); text(refs.falling, down); text(refs.flat, stocks.size - up - down);
   if (state.index) {
     const index = state.index;
     const value = indexNumber.format(index.value);
@@ -311,7 +311,7 @@ function render() {
   text(refs['total-profit'], `${signed(state.account.profit)}원`); color(refs['total-profit'], state.account.profit);
   text(refs['reference-date'], state.reference.length > 10 ? `${date.format(new Date(state.reference))} ${clock.format(new Date(state.reference))}` : state.reference.replaceAll('-', '.'));
   refs['order-price'].min = s.lowerLimit; refs['order-price'].max = s.upperLimit;
-  if (needsPrice) { refs['order-price'].value = s.price; refs['order-price'].step = s.unit; needsPrice = false; }
+  if (needsPrice) { refs['order-price'].value = s.price; refs['order-price'].step = 'any'; needsPrice = false; }
   renderDetail(); estimate();
 }
 function renderDetail() {
@@ -360,7 +360,7 @@ function estimate() {
     const filled = fillableQuantity(levels, qty);
     text(refs['market-fill-help'], `표시된 10단계 호가의 체결 가능 수량 ${fmt(filled)}주`);
   } else {
-    text(refs['order-estimate'], `${fmt(Math.max(0, Number(refs['order-price'].value) * qty))}원`);
+    text(refs['order-estimate'], `${fmt(Math.max(0, Number(refs['order-price'].value)))}원`);
   }
   text(refs['available-label'], side === 'buy' ? '매수 가능 금액' : '매도 가능 수량');
   text(refs['order-available'], side === 'buy' ? `${fmt(state.account.available)}원` : `${fmt(state.account.positions.find(p => p.code === selected)?.available || 0)}주`);

@@ -110,6 +110,7 @@ function add(group, tag) {
 
 export function createCandleRenderer(refs) {
   const slots = [];
+  const priceRanges = new Map();
   const ticks = Array.from({ length: 4 }, () => {
     const text = document.createElement('span');
     refs['chart-labels'].append(text);
@@ -157,25 +158,26 @@ export function createCandleRenderer(refs) {
       refs.chart.setAttribute('aria-label', `${stock.name} 차트 기록 대기 중`);
       return;
     }
-    let low = Infinity, high = -Infinity;
-    for (const [, , h, l] of bars) { low = Math.min(low, l); high = Math.max(high, h); }
-    const pad = Math.max(stock.unit, (high - low) * 0.12);
-    low -= pad; high += pad;
+    const series = view.code + '/' + view.period;
+    let range = priceRanges.get(series);
+    if (!range) {
+      let min = Infinity, max = -Infinity;
+      for (const [, , h, l] of bars) { min = Math.min(min, l); max = Math.max(max, h); }
+      const pad = Math.max(stock.unit, (max - min) * 0.12);
+      range = { low: min - pad, high: max + pad };
+      priceRanges.set(series, range);
+    }
+    const { low, high } = range;
     const y = p => 7 + (high - p) / (high - low) * 151;
     const slotWidth = 536 * duration / span;
     const x = i => timeX(bars[i][0] + duration / 2);
     const width = Math.max(1, Math.min(15, slotWidth * 0.7));
     const dividers = [];
     if (view.period !== '1d') {
-      for (let i = 0; i < visible.length; i++) {
-        const start = visible[i][0];
-        // 15:30 Asia/Seoul is 06:30 UTC.
-        const marker = Math.floor(start / 86400000) * 86400000 + 390 * 60000;
-        const end = (Math.floor(start / duration) + 1) * duration;
-        const next = view.bars[first + i + 1]?.[0];
-        // Historical sessions may end without a bar starting at 15:30.
-        if (marker < start || marker > end || marker >= (next ?? Infinity) ||
-            marker > (view.through ?? Infinity)) continue;
+      // Each trading day starts at 09:00 in Seoul, exactly midnight UTC.
+      const day = 86400000;
+      const end = (Math.floor(visible.at(-1)[0] / duration) + 1) * duration;
+      for (let marker = Math.ceil(origin / day) * day; marker < end && marker <= (view.through ?? Infinity); marker += day) {
         dividers.push('M' + timeX(marker) + ',7V158');
       }
     }

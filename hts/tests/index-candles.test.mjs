@@ -59,8 +59,11 @@ test('old stock-only snapshot backfills fractional index OHLC across KST days fr
   const books = Object.fromEntries(stock.books);
   await writeFile(path.join(dir,'candles.json'), JSON.stringify({version:1, through:midnight, books}));
   const prices = Object.fromEntries(STOCKS.map(s => [s.code, s.close]));
+  const firstPrices = { ...prices, '005930': prices['005930'] * 2 };
+  const baseCap = STOCKS.reduce((sum,s) => sum+s.shares*s.close, 0);
+  const firstIndex = 1000 * (STOCKS.reduce((sum,s) => sum+s.shares*firstPrices[s.code], 0) / baseCap);
   const ticks = [
-    {event:'tick', time:midnight-1, prices},
+    {event:'tick', time:midnight-1, prices:firstPrices},
     {event:'tick', time:midnight, prices, index:{value:1000.1134}},
     {event:'order', time:midnight+1, prices, index:{value:9999}},
     {event:'tick', time:midnight+2, prices, index:{value:999.3312}},
@@ -76,7 +79,7 @@ test('old stock-only snapshot backfills fractional index OHLC across KST days fr
     const {bars,through} = migrated.series(INDEX_CODE,period);
     assert.equal(through,midnight+4);
     assert.equal(bars.length,2);
-    assert.deepEqual(bars[0].slice(1),[1000,1000,1000,1000]);
+    assert.ok(bars[0].slice(1).every(value => Math.abs(value-firstIndex) < 1e-9));
     assert.deepEqual(bars[1],[midnight,1000.1134,1000.9821,999.3312,1000.7055]);
   }
   assert.equal(migrated.series('005930','1m').bars[0][1],11000);

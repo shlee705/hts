@@ -162,7 +162,7 @@ server.listen(port, '127.0.0.1', () => {
   worker.on('message', message => {
     if (message.type === 'ready') {
       ready = true;
-      console.log(`\n  PULSE · KOSPI 100종목 HTS\n  Local: http://localhost:${port}\n  Tick: ${interval} ms · Seed: ${seed}\n  Data: ${dataDir}\n  ${message.recovered ? 'Recovered market checkpoint.' : 'Market ready.'}\n  Ctrl+C: save checkpoint and stop.\n`);
+      console.log(`\n  PULSE · KOSPI ${STOCKS.length}종목 HTS\n  Local: http://localhost:${port}\n  Tick: ${interval} ms · Seed: ${seed}\n  Data: ${message.dataDir}\n  ${message.migration ?? (message.recovered ? 'Recovered market checkpoint.' : 'Market ready.')}\n  Ctrl+C: save checkpoint and stop.\n`);
       process.send?.({ type: 'ready', port });
     } else if (message.type === 'response') {
       const p = pending.get(message.request); if (!p) return;

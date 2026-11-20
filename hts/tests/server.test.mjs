@@ -7,12 +7,12 @@ import { launch, stop, get, post, tempData, sleep } from './helpers.mjs';
 test('server synchronizes clients, persists orders and closes/reopens at last prices', { timeout: 30000 }, async t => {
   const dataDir = await tempData('lifecycle'); let server = await launch({ port: 18371, dataDir, interval: 50 });
   t.after(async () => { await stop(server); });
-  const a = await get(server); assert.equal(a.stocks.length, 100);
-  assert.equal(a.index.name, 'KOSPI 100'); assert.equal(a.index.constituents, 100);
+  const a = await get(server); assert.equal(a.stocks.length, 10);
+  assert.equal(a.index.name, 'KOSPI 10'); assert.equal(a.index.constituents, 10);
   await sleep(180); const b = await get(server); assert.ok(b.tick > a.tick);
   const controller = new AbortController(); const response = await fetch(server.url + '/api/events?symbol=000660', { signal: controller.signal });
   const reader = response.body.getReader(); const initial = new TextDecoder().decode((await reader.read()).value);
-  assert.match(initial, /"index":\{"name":"KOSPI 100"/);
+  assert.match(initial, /"index":\{"name":"KOSPI 10"/);
   assert.match(initial, /event: state/); assert.match(initial, /"code":"000660"/); controller.abort();
   const payload = { code: '005930', side: 'buy', type: 'market', quantity: 3, requestId: 'http-duplicate-123' };
   const orders = await Promise.all(Array.from({ length: 8 }, () => post(server, '/api/orders', payload)));

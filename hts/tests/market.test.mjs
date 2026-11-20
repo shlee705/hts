@@ -5,15 +5,15 @@ import { STOCKS } from '../public/market-data.mjs';
 const make = () => new Market({ seed: 100, now: 1000000 });
 let request = 0;
 const buy = (m, extra = {}) => m.placeOrder({ code: '005930', side: 'buy', type: 'market', quantity: 1, requestId: `test-request-${request++}`, ...extra });
-test('exactly 100 distinct real KOSPI symbols start at hardcoded closing prices', () => {
-  const m = make(); assert.equal(STOCKS.length, 100); assert.equal(new Set(STOCKS.map(s => s.code)).size, 100);
+test('exactly ten distinct KOSPI symbols start at their reference closing prices', () => {
+  const m = make(); assert.equal(STOCKS.length, 10); assert.equal(new Set(STOCKS.map(s => s.code)).size, 10);
   for (const s of m.stocks) { assert.equal(s.price, STOCKS.find(q => q.code === s.code).close); assert.equal(s.prev, s.price); assert.equal(s.history.length, 1); assert.equal(s.volume, 0); }
 });
 test('same seed and tick sequence reproduce prices, books and volumes', () => {
   const a = make(), b = make(); for (let i = 0; i < 500; i++) { a.step(); b.step(); }
   assert.deepEqual(a.state(), b.state()); const c = new Market({ seed: 101, now: 1000000 }); c.step(); assert.notEqual(a.getStock('005930').price, c.getStock('005930').price);
 });
-test('history and trades remain bounded over 300,000 symbol updates', () => {
+test('history and trades remain bounded over 30,000 symbol updates', () => {
   const m = make(); for (let i = 0; i < 3000; i++) m.step();
   for (const s of m.stocks) {
     assert.equal(s.history.length, 180); assert.equal(s.trades.length, 30); assert.ok(s.price >= s.prev * .7 && s.price <= s.prev * 1.3); assert.ok(s.volume > 0);
@@ -39,6 +39,34 @@ test('buy cash and sell shares are reserved and restored on cancellation', () =>
   buy(m, { quantity: 10 }); const sell = buy(m, { side: 'sell', type: 'limit', price: Math.floor(s.prev * 1.3 / s.unit) * s.unit, quantity: 8 });
   assert.equal(m.availableShares(s.code), 2); assert.throws(() => buy(m, { side: 'sell', quantity: 3 }));
   m.cancelOrder(sell.id); assert.equal(m.availableShares(s.code), 10);
+});
+test('whole-won prices between ticks are recorded on resting buys and filled sells', () => {
+  const m = make();
+  const ticket = { type: 'limit', price: 193003, quantity: 2, requestId: 'between-ticks-buy' };
+  const purchase = buy(m, ticket);
+  assert.equal(purchase.status, 'open');
+  assert.equal(purchase.limit, ticket.price);
+  assert.equal(purchase.remaining, 2);
+  assert.equal(m.cash, INITIAL_CASH);
+  assert.equal(m.availableCash(), INITIAL_CASH - 386006);
+
+  const restored = new Market({ previous: m.checkpoint('closed'), now: m.time });
+  assert.equal(buy(restored, ticket).id, purchase.id);
+  assert.equal(restored.orders.length, 1);
+  assert.equal(restored.orders[0].limit, ticket.price);
+  restored.cancelOrder(purchase.id);
+  assert.equal(restored.availableCash(), INITIAL_CASH);
+
+  const stock = restored.getStock('000660');
+  assert.notEqual(stock.unit, m.getStock('005930').unit);
+  buy(restored, { code: stock.code, quantity: 2 });
+  const salePrice = stock.bids[0][0] - 1;
+  const cashBeforeSale = restored.cash;
+  const sale = buy(restored, { code: stock.code, side: 'sell', type: 'limit', price: salePrice, quantity: 2 });
+  assert.equal(sale.limit, salePrice);
+  assert.equal(sale.filled, 2);
+  assert.equal(sale.average, salePrice);
+  assert.equal(restored.cash, cashBeforeSale + salePrice * 2);
 });
 test('partial fills consume liquidity and limit remainder fills only when price crosses', () => {
   const m = make(), s = m.getStock('005930'); s.asks = [[s.price + s.unit, 2]];

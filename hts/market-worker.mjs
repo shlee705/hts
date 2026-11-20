@@ -1,72 +1,52 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { mkdir, readFile, writeFile, rename, open, stat, copyFile } from 'node:fs/promises';
+import { writeFile, rename, open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Market, checkOrderTerms, orderError, validateOrderInput } from './market.mjs';
 import { CandleHistory, INDEX_CODE } from './candles.mjs';
 import { adjustCash, cashState } from './cash.mjs';
 import { OrderArchive } from './order-archive.mjs';
-import { validateCheckpoint } from './checkpoint.mjs';
-import { acquireWriterLock } from './writer-lock.mjs';
+import { openMarketStorage } from './market-storage.mjs';
 
 import {cutoff,daily} from './reference-history.mjs';
 import {tradingDay,missingMinutes} from './calendar.mjs';
 import {DayArchive} from './day-archive.mjs';
 import {seededRandom} from './market.mjs';
-const { dataDir, seed, interval } = workerData;
-await mkdir(dataDir, { recursive: true });
+const { seed, interval } = workerData;
+const { dir: dataDir, previous, account: copiedAccount, migration, release: releaseWriter } = await openMarketStorage(workerData.dataDir);
 const statePath = path.join(dataDir, 'market-state.json');
-const releaseWriter = await acquireWriterLock(dataDir);
-let previous = null, recovered = false, legacyAccount, historyDir=dataDir;
-try {
-  previous = JSON.parse(await readFile(statePath, 'utf8'));
-  if(!previous.marketVersion && previous.prices?.['005935'] && !previous.prices?.['450080']){
-    legacyAccount=previous.account;
-    // Validate the account against the new universe before any persistent change.
-    const fresh=new Market({seed,tickMs:interval}).checkpoint();
-    validateCheckpoint({...fresh,account:legacyAccount});
-    await copyFile(statePath,path.join(dataDir,'before-kospi100-state.json'));
-    historyDir=path.join(dataDir,'kospi100-history');
-    previous=null;
-  } else {
-    validateCheckpoint(previous);
-    if(previous.upgradedUniverse)historyDir=path.join(dataDir,'kospi100-history');
-  }
-  if (previous && previous.status !== 'closed') { recovered = true; }
-} catch (error) {
-  if (error.code !== 'ENOENT') { await releaseWriter(); throw error; }
-}
-await mkdir(historyDir,{recursive:true});
-const market = new Market({ seed, previous:previous??(legacyAccount?{account:legacyAccount}:null), tickMs: interval });
+const recovered = Boolean(previous && previous.status !== 'closed');
+const market = new Market({ seed, previous, tickMs: interval });
 let candles = new CandleHistory(2000);
-const archives=new DayArchive(historyDir);
+const archives=new DayArchive(dataDir);
 await archives.open();
-await candles.restore(historyDir, previous?.updatedAt);
+await candles.restore(dataDir, previous?.updatedAt);
 // Preserve the transition from the historical exchange session to continuous trading.
 function chartSession(time) {
   return Math.max(tradingDay(time), cutoff + 60000);
 }
 let fileRetries = 0;
-if (candles.mergeRestartBars(chartSession)) await candles.save(historyDir, retryFile);
+if (candles.mergeRestartBars(chartSession)) await candles.save(dataDir, retryFile);
 let lastChartSave = Date.now();
 let symbols = new Set(['005930']), timer, stopping = false, queue = Promise.resolve();
 let journal, journalSize = 0, workMs = 0, persistMs = 0, tickCount = 0;
 let lastPublishedDay;
 let orderVersions = new Map(market.orders.map(o => [o.id, `${o.status}|${o.remaining}|${o.average}`]));
-const journalPath = path.join(historyDir, 'ticks.jsonl');
+const journalPath = path.join(dataDir, 'ticks.jsonl');
 
 if (!previous) {
   market.day=tradingDay(cutoff);
-  const seedDaily = (book,row,scale=1) => book['1d'].push([market.day,...row.slice(1,5),null,row[5]*scale]);
-  seedDaily(candles.indexBook,daily.KPI100.at(-1),1000);
+  const seedDaily = (book,row) => book['1d'].push([market.day,...row.slice(1,5),null,row[5]]);
+  const indexDays = daily[INDEX_CODE];
+  seedDaily(candles.indexBook,indexDays.at(-1));
   for(const s of market.stocks){
     const rows=daily[s.code], [,open,high,low,,volume]=rows.at(-1);
     seedDaily(candles.books.get(s.code),rows.at(-1));
     Object.assign(s,{open,high,low,volume,prev:rows.at(-2)[4]});
     s.upperLimit=Math.floor(s.prev*130/(100*s.unit))*s.unit;s.lowerLimit=Math.ceil(s.prev*70/(100*s.unit))*s.unit; market.makeBook(s);
   }
-  market.indexPrevious=daily.KPI100.at(-2)[4];
-  market.indexHigh=daily.KPI100.at(-1)[2];market.indexLow=daily.KPI100.at(-1)[3];market.updateIndex();
+  market.indexPrevious=indexDays.at(-2)[4];
+  market.indexHigh=indexDays.at(-1)[2];market.indexLow=indexDays.at(-1)[3];market.updateIndex();
 }
 async function nextDay(time) {
   if(candles.through && tradingDay(time)>tradingDay(candles.through)){
@@ -96,8 +76,8 @@ async function rotate() {
   if (journalSize < 16 * 1024 * 1024) return;
   await journal.close();
   for (let i = 3; i >= 1; i--) {
-    const from = i === 1 ? journalPath : path.join(historyDir, `ticks.${i - 1}.jsonl`);
-    const to = path.join(historyDir, `ticks.${i}.jsonl`);
+    const from = i === 1 ? journalPath : path.join(dataDir, `ticks.${i - 1}.jsonl`);
+    const to = path.join(dataDir, `ticks.${i}.jsonl`);
     try { await retryFile(() => rename(from, to)); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   }
   journal = await open(journalPath, 'a'); journalSize = 0;
@@ -106,8 +86,7 @@ async function persist(status = 'running', event = 'tick') {
   const start = performance.now();
   const checkpoint = market.checkpoint(status, Math.max(Date.now(),market.time));
   const sessionStart = chartSession(market.time);
-  checkpoint.marketVersion=2;
-  checkpoint.upgradedUniverse=historyDir!==dataDir;
+  checkpoint.marketVersion=3;
   const prints=event==='tick'||event==='order'?market.prints:undefined;
   const line = JSON.stringify({ event, prints, time: checkpoint.updatedAt, quoteTime: market.time, sessionStart, tick: market.tick, prices: checkpoint.prices, index: checkpoint.index, ...(event === 'tick' && market.tickEvents.length ? { marketEvents: market.tickEvents } : {}) }) + '\n';
   await rotate(); await journal.write(line); journalSize += Buffer.byteLength(line);
@@ -115,7 +94,7 @@ async function persist(status = 'running', event = 'tick') {
   await retryFile(() => writeFile(temp, JSON.stringify(checkpoint))); await retryFile(() => rename(temp, statePath));
   if(prints?.length) recordPrints(market.time, sessionStart);
   if (status === 'closed' || Date.now() - lastChartSave >= 60000) {
-    await candles.save(historyDir, retryFile);
+    await candles.save(dataDir, retryFile);
     lastChartSave = Date.now();
   }
   persistMs = performance.now() - start;
@@ -245,8 +224,10 @@ for (const minute of missingMinutes(resumeFrom,startupTime)){
     recordPrints(market.time,chartSession(minute));
   }
 }
-if(candles.through>resumeFrom)await candles.save(historyDir,retryFile);
+if(candles.through>resumeFrom)await candles.save(dataDir,retryFile);
+// Outstanding orders begin trading in the new universe only after historical replay.
+if (copiedAccount) market.restoreAccount(copiedAccount);
 market.tick=0;
 market.time=Math.max(startupTime,candles.through);
 await persist('running', recovered ? 'recover-open' : 'open');
-parentPort.postMessage({ type: 'ready', recovered, reference: market.reference }); schedule();
+parentPort.postMessage({ type: 'ready', recovered, dataDir, migration, reference: market.reference }); schedule();

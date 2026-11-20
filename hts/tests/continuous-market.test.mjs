@@ -6,10 +6,13 @@ import {pathToFileURL} from 'node:url';
 import {Market} from '../market.mjs';
 import {tradingDay, MINUTE} from '../calendar.mjs';
 import {daily, referenceBars} from '../reference-history.mjs';
+import {STOCKS, MARKET_DATA, INDEX_CODE} from '../public/market-data.mjs';
+import {PERIODS} from '../candles.mjs';
 import {get, launch, stop, tempData} from './helpers.mjs';
 
 test('the frozen 14-calendar-day reference contains ten daily closes for all constituents and the index',async()=>{
-  assert.equal(Object.keys(daily).length,101);
+  assert.equal(STOCKS.length,10);
+  assert.deepEqual(Object.keys(daily).sort(),[...STOCKS.map(s=>s.code),INDEX_CODE].sort());
   for(const [code,rows] of Object.entries(daily)){
     assert.equal(rows.length,10);
     assert.equal(rows[0][0],'2026-11-05');
@@ -34,7 +37,7 @@ test('offline replay on Saturday crosses 09:00 KST and reproduces stock and inde
     const server=await launch({dataDir,port:18477,interval:60000,env:{NODE_OPTIONS:'--import='+pathToFileURL(clock).href}});
     try{
       const result=[];
-      for(const code of ['005930','KPI100']){
+      for(const code of ['005930',INDEX_CODE]){
         const bars=(await get(server,'/api/candles?symbol='+code+'&period=1m')).bars.filter(b=>b[0]>start);
         assert.equal(bars.length,5);
         assert.ok(bars.every((b,j)=>b[0]===start+(j+1)*MINUTE && b[6]>0));
@@ -49,7 +52,7 @@ test('offline replay on Saturday crosses 09:00 KST and reproduces stock and inde
 });
 test('stored history preserves session minutes and bridges every overnight and weekend gap',async()=>{
   const {referenceBars:sessionBars}=await import('../reference/session-history.mjs');
-  for(const code of Object.keys(daily)){
+  for(const {code} of STOCKS){
     const bars=await referenceBars(code,'1m');
     const original=await sessionBars(code,'1m');
     let j=0;
@@ -67,5 +70,40 @@ test('stored history preserves session minutes and bridges every overnight and w
     }
     assert.equal(j,original.length);
     assert.equal(bars.at(-1)[4],daily[code].at(-1)[4]);
+  }
+});
+
+test('all six reference index periods derive from the ten constituent minute bars',async()=>{
+  const series=await Promise.all(STOCKS.map(stock=>referenceBars(stock.code,'1m')));
+  const index=await referenceBars(INDEX_CODE,'1m');
+  const referenceCap=STOCKS.reduce((sum,s)=>sum+s.close*s.shares,0);
+  assert.ok(series.every(rows=>rows.length===index.length));
+  for(let i=0; i<index.length; i++){
+    const basket=series.map(rows=>rows[i]);
+    assert.ok(basket.every(bar=>bar[0]===index[i][0]));
+    for(const field of [1,2,3,4]){
+      const cap=basket.reduce((sum,bar,j)=>sum+bar[field]*STOCKS[j].shares,0);
+      assert.ok(Math.abs(index[i][field]-MARKET_DATA.indexClose*cap/referenceCap)<1e-9);
+    }
+    assert.equal(index[i][6],basket.reduce((sum,bar)=>sum+bar[6],0));
+  }
+  assert.equal(index.at(-1)[4],1000);
+  for(const [period,minutes] of Object.entries(PERIODS)){
+    if(period==='1m')continue;
+    const bars=await referenceBars(INDEX_CODE,period);
+    const span=minutes*MINUTE;
+    let i=0;
+    for(const [start,open,high,low,close,,volume] of bars){
+      const first=i;
+      assert.equal(start,Math.floor(index[i][0]/span)*span);
+      while(i<index.length && index[i][0]<start+span)i++;
+      const group=index.slice(first,i);
+      assert.equal(open,group[0][1]);
+      assert.equal(high,Math.max(...group.map(b=>b[2])));
+      assert.equal(low,Math.min(...group.map(b=>b[3])));
+      assert.equal(close,group.at(-1)[4]);
+      assert.equal(volume,group.reduce((sum,b)=>sum+b[6],0));
+    }
+    assert.equal(i,index.length);
   }
 });
