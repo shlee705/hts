@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { INDEX_CODE } from '../public/market-data.mjs';
 import { createChartNavigation } from '../public/chart-navigation.mjs';
 
 function fixture(t) {
@@ -66,7 +67,7 @@ test('a short history can be enlarged, scrolled to its first bar and fit again',
 
 test('slider remembers separate stock, index and period positions, including pending history and resize', t => {
   const ui = fixture(t);
-  const stock = series('005930'), index = series('PULSE100');
+  const stock = series('005930'), index = series(INDEX_CODE);
   assert.deepEqual(ui.setView(stock), { count: 32, start: 68 });
   assert.equal(ui.slider.disabled, false);
   ui.slider.value = '9';
@@ -80,7 +81,7 @@ test('slider remembers separate stock, index and period positions, including pen
   assert.equal(ui.slider.disabled, true);
   assert.equal(ui.setView(stock).start, 9);
   assert.equal(ui.setView(index).start, 4);
-  assert.equal(ui.setView(series('PULSE100', '3m')).start, 68);
+  assert.equal(ui.setView(series(INDEX_CODE, '3m')).start, 68);
   ui.setView(index);
   ui.resize(240);
   assert.deepEqual(ui.displayed, { count: 13, start: 4 });
@@ -91,7 +92,7 @@ test('slider remembers separate stock, index and period positions, including pen
 
 test('vertical wheel zooms stock and index even when all recorded bars fit', t => {
   const ui = fixture(t);
-  for (const code of ['005930', 'PULSE100']) {
+  for (const code of ['005930', INDEX_CODE]) {
     ui.setView(series(code, '1m', 3));
     const wheel = {deltaX:0, deltaY:100, deltaMode:0};
     fire(ui.plot, 'wheel', wheel);
@@ -126,14 +127,14 @@ test('drag and horizontal wheel pan the chart and Ctrl+wheel preserves browser z
   fire(ui.plot, 'wheel', { ...wheel, shiftKey: true });
   assert.equal(ui.displayed.start, 66);
   fire(ui.plot, 'pointerdown', { ...pointer, pointerType: 'mouse' });
-  ui.setView(series('PULSE100'));
+  ui.setView(series(INDEX_CODE));
   assert.equal(ui.plot.capture, undefined);
   fire(ui.plot, 'pointermove', { ...pointer, clientX: 250 });
   assert.equal(ui.displayed.start, 68);
 });
 test('full history includes the oldest minute and follows new minutes for stocks and index', t => {
   const ui = fixture(t);
-  for (const code of ['005930', 'KPI100']) {
+  for (const code of ['005930', INDEX_CODE]) {
     const view = series(code,'1m',45001);
     ui.setView(view);
     fire(ui.all,'click');

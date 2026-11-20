@@ -40,13 +40,13 @@ test('bar rollover restores a final recorded close missing from the live stream'
 test('a pending history response retains the first live bar after a restart in the same minute', async () => {
   let respond;
   const chart = createCandleHistory(() => new Promise(resolve => { respond = resolve; }), () => {});
-  const load = chart.select('PULSE100', '1m');
+  const load = chart.select('KPI10', '1m');
   const before = [...bar(60000, 1900), 50000];
   const after = [...bar(76000, 1910), 76000];
-  chart.update('PULSE100', { '1m': after }, 77500);
-  respond({ code: 'PULSE100', period: '1m', through: 74000, bars: [before] });
+  chart.update('KPI10', { '1m': after }, 77500);
+  respond({ code: 'KPI10', period: '1m', through: 74000, bars: [before] });
   await load;
-  chart.update('PULSE100', { '1m': [76000, 1910, 1920, 1910, 1920, 76000] }, 78000);
+  chart.update('KPI10', { '1m': [76000, 1910, 1920, 1910, 1920, 76000] }, 78000);
   assert.deepEqual(chart.view.bars, [before, [76000, 1910, 1920, 1910, 1920, 76000]]);
 });
 
@@ -103,10 +103,10 @@ test('candles render recorded OHLC and style, and clear when switching to an emp
   assert.equal(refs['chart-content'].style.visibility, 'hidden');
   assert.equal(refs['chart-ohlc'].textContent, '');
 
-  const index = { name: 'PULSE 100', unit: 0.01, format: new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) };
+  const index = { name: 'KOSPI 10', unit: 0.01, format: new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) };
   const indexView = { period: '1d', bars: [[0, 999.97, 1000.09, 999.93, 1000.02]] };
   draw(indexView, 3, 60, 'bars', index);
-  assert.match(refs.chart.attributes['aria-label'], /PULSE 100 일봉/);
+  assert.match(refs.chart.attributes['aria-label'], /KOSPI 10 일봉/);
   assert.match(refs['chart-ohlc'].textContent, /시 999\.97.*고 1,000\.09.*저 999\.93.*종 1,000\.02/);
   assert.match(refs['chart-labels'].children[0].textContent, /\d\.\d{2}$/);
   assert.equal(refs['chart-bars'].children[0].attributes.class, 'up');
@@ -117,49 +117,51 @@ test('candles render recorded OHLC and style, and clear when switching to an emp
 
 test('sliding updates OHLC, timestamps and session dividers for the visible candles or close line', t => {
   const { refs, draw } = chartFixture(t);
-  const markerTime = Date.parse('2026-11-18T15:30:00+09:00');
+  const markerTime = Date.parse('2026-11-18T09:00:00+09:00');
   const view = { period: '1m', bars: [-2, -1, 0, 1].map(i =>
     [...bar(markerTime + i * 60000, 100 + i), i < 0 ? markerTime - 120000 : markerTime]) };
   const time = key => refs[key].textContent;
-  for (const name of ['삼성전자', 'PULSE 100']) {
+  for (const name of ['삼성전자', 'KOSPI 10']) {
     const subject = { name, unit: 1 };
     for (const style of ['bars', 'line']) {
       draw(view, 1, 2, style, subject, 2);
       assert.match(time('chart-ohlc'), /종 101$/);
-      assert.match(time('chart-start'), /15:30/);
+      assert.match(time('chart-start'), /09:00/);
       assert.equal(refs['chart-day-dividers'].attributes.d, 'M5,7V158');
       draw(view, 1, 2, style, subject, 1);
       assert.match(refs.chart.attributes['aria-label'], /마지막 봉 .*종 100$/);
-      assert.match(time('chart-start'), /15:29/);
-      assert.match(time('chart-finish'), /15:30/);
+      assert.match(time('chart-start'), /08:59/);
+      assert.match(time('chart-finish'), /09:00/);
       assert.match(refs['chart-day-dividers'].attributes.d, /^M/);
       draw(view, 1, 2, style, subject, 0);
       assert.match(time('chart-ohlc'), /종 99$/);
-      assert.match(time('chart-finish'), /15:29/);
+      assert.match(time('chart-finish'), /08:59/);
       assert.equal(refs['chart-day-dividers'].attributes.d, '');
     }
   }
 });
 
-test('15:30 KST dividers fall inside hourly bars and ignore weekend restart timestamps', t => {
-  const {refs,draw}=chartFixture(t);
-  const start=Date.parse('2026-11-21T15:00:00+09:00');
-  const bars=[0,60,1440].map(m=>[...bar(start+m*60000,100),start+m*60000]);
-  const path=()=>refs['chart-day-dividers'].attributes.d;
-  const marker=i=>'M'+(5+536*(i/25))+',7V158';
-  for(const style of ['line','bars']){
-    draw({period:'1h',bars,through:start+1460*60000},1,3,style,{name:'KOSPI 100',unit:0.01});
-    assert.equal(path(),marker(.5));
-    draw({period:'1h',bars,through:start+1470*60000},2,3,style,{name:'KOSPI 100',unit:0.01});
-    assert.equal(path(),[marker(.5),marker(24.5)].join(' '));
-    draw({period:'1d',bars},3,3,style,{name:'KOSPI 100',unit:0.01});
-    assert.equal(path(),'');
-  }
-  for(const minutes of [1,3,5,30]){
-    const close=start+30*60000;
-    const bars=[bar(close-minutes*60000,100),bar(start+18*3600000,110)];
-    draw({period:minutes+'m',bars},minutes+4,2,'bars',{name:'삼성전자',unit:1});
-    assert.equal(path(),'M'+(5+536*(minutes/(1050+2*minutes)))+',7V158');
+test('all intraday stock and index views mark 09:00 KST each day, including weekends', t => {
+  const { refs, draw } = chartFixture(t);
+  const open = Date.parse('2026-11-21T09:00:00+09:00');
+  const path = () => refs['chart-day-dividers'].attributes.d;
+  let revision = 0;
+  for (const name of ['삼성전자', 'KOSPI 10']) {
+    for (const style of ['line', 'bars']) {
+      for (const [period, minutes] of Object.entries({ '1m':1, '3m':3, '5m':5, '30m':30, '1h':60 })) {
+        const offsets = [-minutes, 0, minutes, 1440, 1440+minutes];
+        const bars = offsets.map(m => bar(open + m*60000, 100));
+        const subject = { name, unit:1 };
+        const span = 1440 + 3*minutes;
+        const marker = m => 'M' + (5 + 536*((m+minutes)/span)) + ',7V158';
+        draw({ period, bars }, ++revision, bars.length, style, subject);
+        assert.equal(path(), [marker(0), marker(1440)].join(' '));
+        draw({ period, bars:[bars[0]], through:open-1 }, ++revision, 1, style, subject);
+        assert.equal(path(), '');
+      }
+      draw({ period:'1d', bars:[bar(open, 100)] }, ++revision, 1, style, {name,unit:1});
+      assert.equal(path(), '');
+    }
   }
 });
 test('time axis places intermediate KST labels from the visible bars and adapts to width', t => {
@@ -169,7 +171,7 @@ test('time axis places intermediate KST labels from the visible bars and adapts 
   const ticks=()=>refs['chart-time-ticks'].children.filter(tick=>!tick.hidden);
   for(const style of ['line','bars']){
     refs['chart-times'].clientWidth=720;
-    draw(view,1,60,style,{name:'KOSPI 100',unit:1},0);
+    draw(view,1,60,style,{name:'KOSPI 10',unit:1},0);
     const labels=ticks().map(tick=>tick.textContent);
     assert.ok(labels.length>=4);
     for(const label of [refs['chart-start'].textContent,...labels,refs['chart-finish'].textContent]){
@@ -177,10 +179,10 @@ test('time axis places intermediate KST labels from the visible bars and adapts 
       assert.match(date,/11.*18/);
       assert.ok(time >= '20:24' && time <= '21:23');
     }
-    draw(view,1,60,style,{name:'KOSPI 100',unit:1},30);
+    draw(view,1,60,style,{name:'KOSPI 10',unit:1},30);
     assert.notDeepEqual(ticks().map(tick=>tick.textContent),labels);
     refs['chart-times'].clientWidth=360;
-    draw(view,1,60,style,{name:'KOSPI 100',unit:1},30);
+    draw(view,1,60,style,{name:'KOSPI 10',unit:1},30);
     assert.ok(ticks().length<labels.length);
   }
 });

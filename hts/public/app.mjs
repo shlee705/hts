@@ -1,4 +1,4 @@
-import { STOCKS } from './market-data.mjs';
+import { INDEX_CODE, INDEX_NAME, STOCKS } from './market-data.mjs';
 import { createQuoteFeed, createOrderEntry, fillableQuantity } from './order-entry.mjs';
 import { createCandleHistory, createCandleRenderer, periods } from './candle-chart.mjs';
 import { createChartNavigation } from './chart-navigation.mjs';
@@ -54,7 +54,7 @@ const chartHistory = createCandleHistory(async (code, period, signal) => {
   return response.json();
 }, scheduleRender);
 const paintChart = createCandleRenderer(refs);
-const indexChart = { code: 'KPI100', name: 'KOSPI 100', unit: 0.01, format: indexNumber };
+const indexChart = { code: INDEX_CODE, name: INDEX_NAME, unit: 0.01, format: indexNumber };
 const indexDialog = refs['index-dialog'];
 const stockChartMount = refs['shared-chart'].parentElement;
 const chartNavigation = createChartNavigation(refs, drawChart);
@@ -280,7 +280,7 @@ function render() {
     if (!visibleCodes.has(q.code)) continue;
     const r = stockRows.get(q.code); text(r.price, fmt(q.price)); text(r.change, pct((q.price / q.prev - 1) * 100)); color(r.price, q.price - q.prev); color(r.change, q.price - q.prev);
   }
-  text(refs.rising, up); text(refs.falling, down); text(refs.flat, 100 - up - down);
+  text(refs.rising, up); text(refs.falling, down); text(refs.flat, stocks.size - up - down);
   if (state.index) {
     const index = state.index;
     const value = indexNumber.format(index.value);

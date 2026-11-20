@@ -1,7 +1,6 @@
-import { STOCKS, MARKET_DATA } from './public/market-data.mjs';
+import { STOCKS, MARKET_DATA, INDEX_NAME, constituentIndex } from './public/market-data.mjs';
 
 import { tradingDay } from './calendar.mjs';
-const referenceCap = STOCKS.reduce((n,s)=>n+s.close*s.shares,0);
 export const INITIAL_CASH = 100_000_000;
 export const PRICE_MODEL = Object.freeze({
   normalBandRatio: .0015,
@@ -76,15 +75,7 @@ export class Market {
     this.tickMs = tickMs; this.elapsedMs = 0; this.nextEventId = 1;
     this.recentEvents = []; this.tickEvents = [];
     this.reference = previous?.reference ?? MARKET_DATA.asOf;
-    this.cash = previous?.account?.cash ?? INITIAL_CASH;
-    this.realized = previous?.account?.realized ?? 0;
-    this.cashRevision = previous?.account?.cashRevision ?? 0;
-    this.lastCashOperation = previous?.account?.lastCashOperation ?? null;
-    this.holdings = new Map((previous?.account?.holdings || []).map(h => [h.code, { ...h }]));
-    this.nextOrderId = previous?.account?.nextOrderId || 1;
-    this.orders = (previous?.account?.orders || []).map(o => ({ ...o }));
-    this.ordersByRequest = new Map(this.orders.map(order => [order.requestId, order]));
-    this.evictedOrder = null;
+    this.restoreAccount(previous?.account);
     this.stocks = STOCKS.map(data => {
       const price = previous?.prices?.[data.code] ?? data.close;
       const unit = previous?.units?.[data.code] || tickSize(price);
@@ -121,6 +112,17 @@ export class Market {
     this.indexHigh=previous?.index?.high??this.indexPrevious; this.indexLow=previous?.index?.low??this.indexPrevious;
     this.updateIndex();
   }
+  restoreAccount(account = {}) {
+    this.cash = account.cash ?? INITIAL_CASH;
+    this.realized = account.realized ?? 0;
+    this.cashRevision = account.cashRevision ?? 0;
+    this.lastCashOperation = account.lastCashOperation ?? null;
+    this.holdings = new Map((account.holdings ?? []).map(h => [h.code, { ...h }]));
+    this.nextOrderId = account.nextOrderId ?? 1;
+    this.orders = (account.orders ?? []).map(o => ({ ...o }));
+    this.ordersByRequest = new Map(this.orders.map(order => [order.requestId, order]));
+    this.evictedOrder = null;
+  }
   getStock(code) { const s = this.byCode.get(code); if (!s) throw orderError('존재하지 않는 종목입니다.'); return s; }
   eventRange([min, max]) { return min + this.eventRandom() * (max - min); }
   startEvent(s) {
@@ -156,11 +158,11 @@ export class Market {
     return event;
   }
   calculateIndex(field = 'price') {
-    return MARKET_DATA.indexClose * (this.stocks.reduce((sum,s)=>sum+s[field]*s.shares,0)/referenceCap);
+    return constituentIndex((stock, i) => this.stocks[i][field]);
   }
   updateIndex() {
     const value = this.calculateIndex(); this.indexHigh = Math.max(this.indexHigh, value); this.indexLow = Math.min(this.indexLow, value);
-    this.indexState = { name: 'KOSPI 100', value, previousClose: this.indexPrevious, change: value - this.indexPrevious,
+    this.indexState = { name: INDEX_NAME, value, previousClose: this.indexPrevious, change: value - this.indexPrevious,
       changeRate: (value / this.indexPrevious - 1) * 100, high: this.indexHigh, low: this.indexLow, base: MARKET_DATA.indexClose, constituents: this.stocks.length };
   }
   index() { return { ...this.indexState }; }

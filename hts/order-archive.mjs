@@ -22,7 +22,7 @@ export class OrderArchive {
     try { receipt = JSON.parse(data); } catch { /* Report an invalid receipt below. */ }
     const terms = receipt?.order ?? receipt?.rejected;
     if (receipt?.version !== 1 || terms?.requestId !== requestId ||
-        !(receipt.order ? validStoredOrder(receipt.order) && ['filled', 'cancelled'].includes(receipt.order.status) : typeof receipt.error === 'string')) {
+        !(receipt.order ? validStoredOrder(receipt.order, null) && ['filled', 'cancelled'].includes(receipt.order.status) : typeof receipt.error === 'string')) {
       throw Object.assign(new Error('저장된 주문 결과를 확인할 수 없습니다.'), { code: 'EBADRECEIPT' });
     }
     return receipt;

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10141c"><meta name="description" content="KOSPI 100종목을 위한 작은 트레이딩 터미널. 실시간 시세, 관심종목, 호가와 주문.">
+  <meta name="theme-color" content="#10141c"><meta name="description" content="국내 주식 10종목의 모의 시세, 관심종목, 호가와 주문을 제공하는 트레이딩 터미널.">
   <title>PULSE — 트레이딩 터미널</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.mjs"></script>
@@ -16,20 +16,20 @@
   <main>
     <section class="page-heading"><div><div class="eyebrow">YOUR MARKET, AT A GLANCE</div><h1>주식 트레이딩<span>KOSPI</span></h1></div><div class="heading-meta"><span id="market-clock">--:--:--</span><span class="muted">서버 시세 · KST</span></div></section>
     <section class="overview" aria-label="시장과 계좌 요약">
-      <div class="index-card"><button type="button" id="open-index-chart" aria-label="KOSPI 100 지수 차트 열기" aria-haspopup="dialog" aria-controls="index-dialog" disabled><span class="stat-label">KOSPI 100 <span class="index-chart-link">차트 보기 ↗</span></span><span class="index-quote"><strong id="index-value">—</strong><span id="index-change">—</span></span></button><div class="breadth"><span class="up">상승 <b id="rising">0</b></span><span class="down">하락 <b id="falling">0</b></span><span class="muted">보합 <b id="flat">100</b></span></div></div>
+      <div class="index-card"><button type="button" id="open-index-chart" aria-label="KOSPI 10 지수 차트 열기" aria-haspopup="dialog" aria-controls="index-dialog" disabled><span class="stat-label">KOSPI 10 <span class="index-chart-link">차트 보기 ↗</span></span><span class="index-quote"><strong id="index-value">—</strong><span id="index-change">—</span></span></button><div class="breadth"><span class="up">상승 <b id="rising">0</b></span><span class="down">하락 <b id="falling">0</b></span><span class="muted">보합 <b id="flat">10</b></span></div></div>
       <div><span class="stat-label">총 평가자산</span><strong id="total-equity">100,000,000<span>원</span></strong></div>
       <div><span class="stat-label">주문 가능 금액 <a href="/account" class="cash-link">충전·인출 ↗</a></span><strong id="available-cash">100,000,000<span>원</span></strong></div>
       <div><span class="stat-label">보유종목 평가손익</span><strong id="total-profit">0<span>원</span></strong></div>
     </section>
     <div class="workspace" id="workspace">
       <aside class="panel watch-panel" aria-label="종목 검색과 관심종목">
-        <div class="panel-heading"><h2>종목 탐색</h2><span class="muted" id="result-count">100종목</span></div>
+        <div class="panel-heading"><h2>종목 탐색</h2><span class="muted" id="result-count">10종목</span></div>
         <div class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg><input id="search" type="search" placeholder="종목명 또는 코드 검색" aria-label="종목명 또는 코드 검색" autocomplete="off"><kbd>/</kbd></div>
         <div class="tabbar" role="group" aria-label="종목 목록 필터"><button id="all-tab" class="selected" aria-pressed="true">전체 종목</button><button id="favorites-tab" aria-pressed="false">관심종목 <span id="favorite-count">0</span></button></div>
         <div class="list-heading"><span>종목명</span><label for="sort">정렬</label><select id="sort" aria-label="종목 정렬"><option value="rank">시가총액순</option><option value="up">상승률순</option><option value="down">하락률순</option><option value="volume">거래량순</option></select></div>
         <div id="stock-list" class="stock-list" aria-label="종목 목록"></div>
         <div id="empty-search" class="empty" hidden>검색 결과가 없습니다.</div>
-        <div class="list-footer"><span class="tiny-dot"></span>KOSPI 100 구성종목</div>
+        <div class="list-footer"><span class="tiny-dot"></span>KOSPI 10 구성종목</div>
       </aside>
       <section class="center-column" aria-label="선택 종목 시세">
         <div class="panel quote-panel">
@@ -109,10 +109,10 @@
     <div id="stock-chart-mount"></div>
   </dialog>
   <dialog id="index-dialog" aria-labelledby="index-dialog-title">
-    <div class="dialog-header"><h2 id="index-dialog-title">KOSPI 100 지수 차트</h2><button type="button" id="close-index-chart" aria-label="지수 차트 닫기" autofocus>×</button></div>
+    <div class="dialog-header"><h2 id="index-dialog-title">KOSPI 10 지수 차트</h2><button type="button" id="close-index-chart" aria-label="지수 차트 닫기" autofocus>×</button></div>
     <div class="index-dialog-quote"><strong id="dialog-index-value">—</strong><span id="dialog-index-change">—</span></div>
     <div id="index-chart-mount"></div>
   </dialog>
-  <dialog id="data-dialog"><div class="dialog-header"><h2>시세 데이터 안내</h2><button id="close-dialog" aria-label="안내 닫기">×</button></div><p>2026년 11월 5~18일의 KOSPI 100 구성종목과 지수 시세를 기준 기록으로 사용합니다. 11월 18일 종가 이후의 가격과 지수는 이 서버의 독립 시장에서 결정됩니다.</p><p>주말을 포함해 24시간 연속매매합니다. 일봉은 한국시간 오전 9시부터 다음 날 오전 9시 직전까지의 시가·고가·저가·종가와 거래량입니다.</p><p>국내 종목의 기준 종가는 Yahoo Finance, 지수 일봉은 네이버 증권, 지수 구성종목은 KRX:KOSPI100 구성종목 자료를 사용합니다.</p></dialog>
+  <dialog id="data-dialog"><div class="dialog-header"><h2>시세 데이터 안내</h2><button id="close-dialog" aria-label="안내 닫기">×</button></div><p>KOSPI 10은 이 모의 시장의 10개 종목으로 계산한 시가총액 가중 지수입니다. 2026년 11월 18일 종가 기준 시가총액 합계를 1,000포인트로 놓고 과거 이력과 실시간 지수를 같은 기준으로 계산합니다.</p><p>종목의 기준 이력은 2026년 11월 5~18일이며, 기준 종가는 Yahoo Finance 기록을 사용합니다. 이후 이 서버에서 주말을 포함해 24시간 모의 거래가 이어집니다. 일봉은 한국시간 오전 9시부터 다음 날 오전 9시 직전까지 집계합니다. 분봉·시간봉의 흰색 점선은 오전 9시를 표시합니다.</p></dialog>
 </body>
 </html>

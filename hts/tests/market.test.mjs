@@ -5,15 +5,15 @@ import { STOCKS } from '../public/market-data.mjs';
 const make = () => new Market({ seed: 100, now: 1000000 });
 let request = 0;
 const buy = (m, extra = {}) => m.placeOrder({ code: '005930', side: 'buy', type: 'market', quantity: 1, requestId: `test-request-${request++}`, ...extra });
-test('exactly 100 distinct real KOSPI symbols start at hardcoded closing prices', () => {
-  const m = make(); assert.equal(STOCKS.length, 100); assert.equal(new Set(STOCKS.map(s => s.code)).size, 100);
+test('exactly ten distinct KOSPI symbols start at their reference closing prices', () => {
+  const m = make(); assert.equal(STOCKS.length, 10); assert.equal(new Set(STOCKS.map(s => s.code)).size, 10);
   for (const s of m.stocks) { assert.equal(s.price, STOCKS.find(q => q.code === s.code).close); assert.equal(s.prev, s.price); assert.equal(s.history.length, 1); assert.equal(s.volume, 0); }
 });
 test('same seed and tick sequence reproduce prices, books and volumes', () => {
   const a = make(), b = make(); for (let i = 0; i < 500; i++) { a.step(); b.step(); }
   assert.deepEqual(a.state(), b.state()); const c = new Market({ seed: 101, now: 1000000 }); c.step(); assert.notEqual(a.getStock('005930').price, c.getStock('005930').price);
 });
-test('history and trades remain bounded over 300,000 symbol updates', () => {
+test('history and trades remain bounded over 30,000 symbol updates', () => {
   const m = make(); for (let i = 0; i < 3000; i++) m.step();
   for (const s of m.stocks) {
     assert.equal(s.history.length, 180); assert.equal(s.trades.length, 30); assert.ok(s.price >= s.prev * .7 && s.price <= s.prev * 1.3); assert.ok(s.volume > 0);
