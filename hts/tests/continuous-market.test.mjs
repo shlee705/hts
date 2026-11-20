@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFile} from 'node:fs/promises';
+import {readFile, writeFile} from 'node:fs/promises';
+import {gunzipSync} from 'node:zlib';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {Market} from '../market.mjs';
 import {tradingDay, MINUTE} from '../calendar.mjs';
 import {daily, referenceBars} from '../reference-history.mjs';
 import {STOCKS, MARKET_DATA, INDEX_CODE} from '../public/market-data.mjs';
+import {roundTick, tickSize} from '../public/tick-size.mjs';
 import {PERIODS} from '../candles.mjs';
 import {get, launch, stop, tempData} from './helpers.mjs';
 
@@ -41,6 +43,9 @@ test('offline replay on Saturday crosses 09:00 KST and reproduces stock and inde
         const bars=(await get(server,'/api/candles?symbol='+code+'&period=1m')).bars.filter(b=>b[0]>start);
         assert.equal(bars.length,5);
         assert.ok(bars.every((b,j)=>b[0]===start+(j+1)*MINUTE && b[6]>0));
+        if(code!==INDEX_CODE)for(const bar of bars){
+          for(const price of bar.slice(1,5))assert.equal(price%tickSize(price),0);
+        }
         const days=(await get(server,'/api/candles?symbol='+code+'&period=1d')).bars.slice(-2);
         assert.deepEqual(days.map(b=>b[0]),[tradingDay(start),tradingDay(end)]);
         assert.equal(days[1][6],bars.slice(2).reduce((n,b)=>n+b[6],0));
@@ -55,15 +60,26 @@ test('stored history preserves session minutes and bridges every overnight and w
   for(const {code} of STOCKS){
     const bars=await referenceBars(code,'1m');
     const original=await sessionBars(code,'1m');
+    const raw=JSON.parse(gunzipSync(await readFile(new URL('../reference/minutes/'+code+'.json.gz',import.meta.url))));
+    const observed=new Map(raw.map(row=>[row[0],row]));
     let j=0;
     for(let i=0;i<bars.length;i++){
       const b=bars[i],prev=bars[i-1];
       if(prev) assert.equal(b[0],prev[0]+MINUTE);
+      // A provider print at 15:30 merges into the 15:29 candle.
+      const close=tradingDay(b[0])+390*MINUTE;
+      const mergedClosingPrint=b[0]===close-MINUTE && observed.has(close);
+      const observation=b[0]<close && observed.get(b[0]);
+      if(observation && !mergedClosingPrint){
+        assert.deepEqual(b.slice(1,5),observation.slice(1,5));
+      }else if(!observation && !mergedClosingPrint){
+        for(const price of b.slice(1,5))assert.equal(price%tickSize(price),0,`${code} at ${b[0]}: ${price}`);
+      }
       if(original[j]?.[0]===b[0]){
-        if(i && original[j-1][0]<prev[0])assert.equal(prev[4],b[1]);
+        if(i && original[j-1][0]<prev[0])assert.equal(prev[4],roundTick(b[1]));
         assert.deepEqual(b,original[j++]);
       } else {
-        assert.equal(b[1],prev[4]);
+        assert.equal(b[1],roundTick(prev[4]));
         assert.ok(b[3]>0 && b[3]<=Math.min(b[1],b[4]) && b[2]>=Math.max(b[1],b[4]));
         assert.ok(Number.isSafeInteger(b[6]) && b[6]>0);
       }

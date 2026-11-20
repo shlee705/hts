@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Market, PRICE_MODEL, EVENT_TYPES } from '../market.mjs';
+import { roundTick } from '../public/tick-size.mjs';
 
 const quietMarket = (seed = 42, tickMs = 1000) => {
   const market = new Market({ seed, tickMs, now: 0 });
@@ -69,11 +70,13 @@ test('scheduled events are reproducible, periodic, mixed and bounded', () => {
 });
 test('KOSPI 10 matches its formula and retains its level across restarts', () => {
   const market = quietMarket(); const base=market.index().value; assert.equal(base,1000);
-  const stock = market.stocks[0]; stock.price = stock.close * 1.1; market.updateIndex();
-  assert.ok(Math.abs(market.index().value - base*(1+.1*stock.close*stock.shares/market.stocks.reduce((n,s)=>n+s.close*s.shares,0))) < 1e-9);
-  for (const s of market.stocks) s.price = s.close * 1.01;
-  market.updateIndex(); assert.ok(Math.abs(market.index().value - base*1.01) < 1e-9);
-  assert.ok(Math.abs(market.index().changeRate - 1) < 1e-9); assert.equal(market.index().low, base);
+  const baseCap = market.stocks.reduce((n,s)=>n+s.close*s.shares,0);
+  const stock = market.stocks[0]; stock.price = roundTick(stock.close * 1.1); market.updateIndex();
+  assert.ok(Math.abs(market.index().value - base*(1+(stock.price-stock.close)*stock.shares/baseCap)) < 1e-9);
+  for (const s of market.stocks) s.price = roundTick(s.close * 1.01);
+  const currentCap = market.stocks.reduce((n,s)=>n+s.price*s.shares,0);
+  market.updateIndex(); assert.ok(Math.abs(market.index().value - base*currentCap/baseCap) < 1e-9);
+  assert.ok(Math.abs(market.index().changeRate - (currentCap/baseCap-1)*100) < 1e-9); assert.equal(market.index().low, base);
   const restart = new Market({ previous: market.checkpoint('closed'), now: 60000 });
   assert.equal(restart.index().value, market.index().value); assert.equal(restart.index().previousClose, base);
   assert.equal(restart.index().change, market.index().change); assert.equal(restart.recentEvents.length, 0);

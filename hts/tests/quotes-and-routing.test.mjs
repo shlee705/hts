@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BAR_LIMIT, CandleHistory, PERIODS } from '../candles.mjs';
 import { Market } from '../market.mjs';
+import { nextTick, previousTick, tickSize } from '../public/tick-size.mjs';
 import { isLocalHost, bufferEvent } from '../http-routes.mjs';
 import { launch, stop, tempData, get, sleep } from './helpers.mjs';
 
@@ -60,25 +61,32 @@ test('reopening a real server serves all six prior candle series before the firs
   }
 });
 
-test('quote capacity and limits use real per-issue shares and one consistent session price grid', () => {
+test('daily limits and displayed depth align with each quoted price band', () => {
   const market = new Market();
   const quotes = market.state().stocks;
   assert.equal(quotes.length,10);
   for (const s of quotes) {
     assert.ok(Number.isSafeInteger(s.shares) && s.shares > 0);
     assert.ok(Number.isSafeInteger(s.shares*s.price));
-    assert.equal(s.upperLimit % s.unit,0);
-    assert.equal(s.lowerLimit % s.unit,0);
-    assert.ok(s.upperLimit*100 <= s.prev*130 && (s.upperLimit+s.unit)*100 > s.prev*130);
-    assert.ok(s.lowerLimit*100 >= s.prev*70 && (s.lowerLimit-s.unit)*100 < s.prev*70);
+    assert.equal(s.unit, tickSize(s.price));
+    assert.equal(s.upperLimit % tickSize(s.upperLimit), 0);
+    assert.equal(s.lowerLimit % tickSize(s.lowerLimit), 0);
+    assert.ok(s.upperLimit*100 <= s.prev*130 && nextTick(s.upperLimit)*100 > s.prev*130);
+    assert.ok(s.lowerLimit*100 >= s.prev*70 && previousTick(s.lowerLimit)*100 < s.prev*70);
   }
   const stock = market.getStock('005930');
   assert.equal(stock.shares,quotes.find(q=>q.code==='005930').shares);
-  for (const price of [stock.upperLimit,stock.lowerLimit]) {
+  for (const price of [stock.upperLimit,199900,200000,200500,stock.lowerLimit]) {
     stock.price = price;
     for (const side of ['buy','sell']) {
       market.makeBook(stock,side);
-      for (const [p] of [...stock.asks,...stock.bids]) assert.ok(p>=stock.lowerLimit && p<=stock.upperLimit);
+      const { asks, bids } = market.detail(stock.code);
+      for (const [p] of [...asks,...bids]) {
+        assert.ok(p>=stock.lowerLimit && p<=stock.upperLimit);
+        assert.equal(p % tickSize(p),0);
+      }
+      for (let i=1; i<asks.length; i++) assert.equal(asks[i][0], nextTick(asks[i-1][0]));
+      for (let i=1; i<bids.length; i++) assert.equal(bids[i][0], previousTick(bids[i-1][0]));
     }
   }
 });
@@ -95,6 +103,9 @@ test('routes distinguish methods, invalid content and unknown paths, including d
   const server = await launch({port:18448,dataDir:await tempData('routes')});
   t.after(()=>stop(server));
   const request = (route, init) => fetch(server.url+route,init);
+  const priceModule = await request('/tick-size.mjs');
+  assert.equal(priceModule.status,200);
+  assert.match(priceModule.headers.get('Content-Type'), /^text\/javascript/);
   const orders = await request('/api/orders');
   assert.equal(orders.status,405);
   assert.equal(orders.headers.get('Allow'),'POST');

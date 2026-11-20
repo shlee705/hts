@@ -1,4 +1,6 @@
 import { STOCKS, MARKET_DATA, INDEX_NAME, constituentIndex } from './public/market-data.mjs';
+import { tickSize, nextTick, previousTick, roundTick, floorTick, ceilTick, dailyLimits } from './public/tick-size.mjs';
+export { tickSize } from './public/tick-size.mjs';
 
 import { tradingDay } from './calendar.mjs';
 export const INITIAL_CASH = 100_000_000;
@@ -15,7 +17,6 @@ export const EVENT_TYPES = Object.freeze([
   { type: 'very-good', label: '매우 호재', direction: 1, weight: .1, impact: [.012, .025], noise: 3 },
   { type: 'very-bad', label: '매우 악재', direction: -1, weight: .1, impact: [.012, .025], noise: 3 },
 ]);
-export const tickSize = p => p >= 500000 ? 1000 : p >= 200000 ? 500 : p >= 50000 ? 100 : p >= 20000 ? 50 : p >= 5000 ? 10 : p >= 2000 ? 5 : 1;
 export function seededRandom(seed) {
   let state = Number(seed) >>> 0;
   return () => {
@@ -33,23 +34,37 @@ function levelSize(seed, price, nearBest) {
 }
 function appendLevel(levels) {
   const cursor = levels.tail;
-  if (!cursor || (cursor.step > 0 ? cursor.next > cursor.end : cursor.next < cursor.end)) return false;
+  if (!cursor || (cursor.direction > 0 ? cursor.next > cursor.end : cursor.next < cursor.end)) return false;
   const price = cursor.next;
-  cursor.next += cursor.step;
-  const quantity = levelSize(cursor.seed, price, Math.abs(price-cursor.best) < 10*Math.abs(cursor.step));
+  cursor.next = cursor.direction > 0 ? nextTick(price) : previousTick(price);
+  const quantity = levelSize(cursor.seed, price, cursor.nearRemaining > 0);
+  if (cursor.nearRemaining) cursor.nearRemaining--;
   levels.push([price, quantity]);
   return true;
 }
 function refillDisplay(levels) {
   while (levels.length < 10 && appendLevel(levels)) {}
 }
-function makeSide(best, step, end, seed) {
+function makeSide(best, direction, end, seed) {
   const levels = [];
-  levels.tail = {best,next:best,step,end,seed};
+  levels.tail = {next:best,direction,end,seed,nearRemaining:10};
   refillDisplay(levels);
   return levels;
 }
 const bound = (n, low, high) => Math.max(low, Math.min(high, n));
+function restoreSide(snapshot, direction, stock, legacy) {
+  const levels = snapshot.levels.filter(([price]) => !legacy ||
+    (price >= stock.lowerLimit && price <= stock.upperLimit && price === floorTick(price))).map(level => [...level]);
+  const tail = snapshot.tail;
+  if (tail) {
+    levels.tail = legacy
+      ? {next: direction > 0 ? ceilTick(tail.next) : floorTick(tail.next), direction,
+         end: direction > 0 ? stock.upperLimit : stock.lowerLimit, seed: tail.seed, nearRemaining: 0}
+      : {...tail};
+    refillDisplay(levels);
+  }
+  return levels;
+}
 export function orderError(message, status = 400) {
   return Object.assign(new Error(message), { status });
 }
@@ -77,11 +92,10 @@ export class Market {
     this.reference = previous?.reference ?? MARKET_DATA.asOf;
     this.restoreAccount(previous?.account);
     this.stocks = STOCKS.map(data => {
-      const price = previous?.prices?.[data.code] ?? data.close;
-      const unit = previous?.units?.[data.code] || tickSize(price);
-      const stock = { ...data, prev: price, price, unit, open: price, high: price, low: price, volume: 0, turnover: 0, direction: 0, history: [{ time: now, price, volume: 0 }], trades: [] };
-      stock.upperLimit = Math.floor(price * 130 / (100 * unit)) * unit;
-      stock.lowerLimit = Math.ceil(price * 70 / (100 * unit)) * unit;
+      const price = roundTick(previous?.prices?.[data.code] ?? data.close);
+      const stock = { ...data, prev: price, price, get unit() { return tickSize(this.price); },
+        ...dailyLimits(price), open: price, high: price, low: price, volume: 0, turnover: 0, direction: 0,
+        history: [{ time: now, price, volume: 0 }], trades: [] };
       stock.dynamics = { anchor: price, latent: price, event: null, nextEventAt: this.eventRange(PRICE_MODEL.firstEventMs) };
       this.makeBook(stock); return stock;
     });
@@ -90,8 +104,11 @@ export class Market {
     this.dayStats = previous?.dayStats;
     if (this.dayStats) for (const s of this.stocks) {
       const stats=this.dayStats[s.code]; if(stats) Object.assign(s,stats);
-      s.upperLimit=Math.floor(s.prev*130/(100*s.unit))*s.unit;
-      s.lowerLimit=Math.ceil(s.prev*70/(100*s.unit))*s.unit;
+      Object.assign(s,dailyLimits(s.prev));
+      s.price = bound(s.price, s.lowerLimit, s.upperLimit);
+      s.high = Math.max(s.high,s.price);
+      s.low = Math.min(s.low,s.price);
+      s.history[0].price = s.dynamics.latent = s.dynamics.anchor = s.price;
       this.makeBook(s);
     }
     for (const order of this.orders) {
@@ -101,8 +118,7 @@ export class Market {
     for (const [code,book] of Object.entries(previous?.consumedBooks ?? {})) {
       const stock = this.getStock(code);
       for (const side of ['asks','bids']) {
-        stock[side] = book[side].levels.map(level => [...level]);
-        stock[side].tail = book[side].tail;
+        stock[side] = restoreSide(book[side], side === 'asks' ? 1 : -1, stock, previous.quoteGridVersion !== 2);
       }
       stock.bookChanged = true;
     }
@@ -153,8 +169,11 @@ export class Market {
     const sigma = Math.max(s.unit * .22, d.anchor * .000035) * (event?.noise || 1);
     const band = Math.max(s.unit, d.anchor * PRICE_MODEL.normalBandRatio) * (event ? 1.5 : 1);
     d.latent = bound(d.latent + (d.anchor - d.latent) * alpha + noise * sigma * Math.sqrt(seconds), d.anchor - band, d.anchor + band);
-    const movementLimit = event ? Math.max(1, Math.ceil(d.anchor * .0012 * seconds / s.unit)) * s.unit : s.unit;
-    s.price = bound(Math.round(d.latent / s.unit) * s.unit, Math.max(s.lowerLimit, s.price - movementLimit), Math.min(s.upperLimit, s.price + movementLimit));
+    const target = bound(roundTick(d.latent), s.lowerLimit, s.upperLimit);
+    const maxTicks = event ? Math.max(1, Math.ceil(d.anchor * .0012 * seconds / s.unit)) : 1;
+    for (let i = 0; i < maxTicks && s.price !== target; i++) {
+      s.price = s.price < target ? nextTick(s.price) : previousTick(s.price);
+    }
     return event;
   }
   calculateIndex(field = 'price') {
@@ -167,11 +186,11 @@ export class Market {
   }
   index() { return { ...this.indexState }; }
   makeBook(s, side = 'buy') {
-    const bestAsk = side === 'buy' ? s.price : s.price + s.unit;
-    const bestBid = bestAsk - s.unit;
+    const bestAsk = side === 'buy' ? s.price : nextTick(s.price);
+    const bestBid = side === 'sell' ? s.price : previousTick(s.price);
     const seed = Math.floor(this.random() * 4294967296);
-    s.asks = makeSide(bestAsk, s.unit, s.upperLimit, seed);
-    s.bids = makeSide(bestBid, -s.unit, s.lowerLimit, ~seed);
+    s.asks = makeSide(bestAsk, 1, s.upperLimit, seed);
+    s.bids = makeSide(bestBid, -1, s.lowerLimit, ~seed);
     s.bookChanged = false;
   }
   rollDay(now) {
@@ -181,7 +200,7 @@ export class Market {
     this.indexLow=this.indexHigh=this.indexPrevious;
     for(const s of this.stocks){
       s.prev=s.open=s.high=s.low=s.price; s.volume=s.turnover=0;
-      s.upperLimit=Math.floor(s.prev*130/(100*s.unit))*s.unit; s.lowerLimit=Math.ceil(s.prev*70/(100*s.unit))*s.unit;
+      Object.assign(s,dailyLimits(s.prev));
       this.makeBook(s);
     }
     this.reference=new Date(day).toISOString();
@@ -197,11 +216,12 @@ export class Market {
       const queued = pressure.get(s.code);
       if (queued) {
         // Incoming counterparty liquidity trades against the resting order at its price.
-        const price = bound(queued.limit, s.lowerLimit, s.upperLimit);
+        // A resting market order from a legacy checkpoint may have an off-grid bound.
+        const price = bound(queued.side === 'buy' ? floorTick(queued.limit) : ceilTick(queued.limit), s.lowerLimit, s.upperLimit);
         // Rebuild the passive side around the incoming execution, retaining user queues separately.
-        const best = price + (queued.side === 'buy' ? -s.unit : s.unit);
+        const best = queued.side === 'buy' ? previousTick(price) : nextTick(price);
         const sign = queued.side === 'buy' ? -1 : 1;
-        s[queued.side === 'buy' ? 'bids' : 'asks'] = makeSide(best,sign*s.unit,
+        s[queued.side === 'buy' ? 'bids' : 'asks'] = makeSide(best,sign,
           sign<0 ? s.lowerLimit : s.upperLimit,Math.floor(this.random()*4294967296));
         const levels = queued.side === 'buy' ? 'asks' : 'bids';
         s[levels] = [[price, 10 + Math.floor(this.random() * 1800)]];
@@ -307,11 +327,11 @@ export class Market {
       const buy = order.side === 'buy';
       if (buy ? s.price > priorPrice : s.price < priorPrice) {
         const passive = buy ? s.bids : s.asks;
-        const step = buy ? -s.unit : s.unit;
+        const adjacent = buy ? previousTick : nextTick;
         const edge = buy ? s.lowerLimit : s.upperLimit;
-        const existing = passive[0]?.[0] ?? (edge + step);
+        const existing = passive[0]?.[0] ?? adjacent(edge);
         const added = [];
-        for (let price=s.price+step; buy ? price>existing : price<existing; price+=step) {
+        for (let price=adjacent(s.price); buy ? price>existing : price<existing; price=adjacent(price)) {
           const size = levelSize(this.seed ^ this.tick ^ Number(s.code), price, added.length<10);
           added.push([price, size]);
         }
@@ -338,7 +358,7 @@ export class Market {
     });
     return { cash: this.cash, available: this.availableCash(), equity: this.cash + valuation, valuation, profit: valuation - cost, realized: this.realized, positions };
   }
-  quotes(includeLimits=false) { return this.stocks.map(s => ({ code: s.code, ...(includeLimits ? {prev:s.prev, open:s.open, upperLimit:s.upperLimit, lowerLimit:s.lowerLimit} : {}), price: s.price, high: s.high, low: s.low, volume: s.volume, turnover: s.turnover, direction: s.direction })); }
+  quotes(includeLimits=false) { return this.stocks.map(s => ({ code: s.code, ...(includeLimits ? {prev:s.prev, open:s.open, upperLimit:s.upperLimit, lowerLimit:s.lowerLimit} : {}), ...this.quote(s) })); }
   detail(code, full = false) {
     const s = this.getStock(code);
     const pending = this.orders.filter(order => order.code === code && order.remaining && order.status !== 'cancelled');
@@ -346,22 +366,22 @@ export class Market {
       levels = levels.slice(0,10);
       if (!pending.length) return levels;
       const quantities = new Map(levels);
-      for (const order of pending) if (order.side === side)
+      for (const order of pending) if (order.side === side && order.limit === floorTick(order.limit) && order.limit >= s.lowerLimit && order.limit <= s.upperLimit)
         quantities.set(order.limit, (quantities.get(order.limit) ?? 0) + order.remaining);
       return [...quantities].sort(([a], [b]) => side === 'buy' ? b - a : a - b).slice(0, 10);
     }
     return { code, asks: depth(s.asks, 'sell'), bids: depth(s.bids, 'buy'), trades: s.trades.slice(0, 16), point: s.history.at(-1), ...(full ? { history: s.history } : {}) };
   }
   state(code = '005930') {
-    return { seed: this.seed, tick: this.tick, time: this.time, reference: this.reference, sourceDate: MARKET_DATA.asOf, index: this.index(), stocks: this.stocks.map(s => ({ code: s.code, name: s.name, rank: s.rank, shares: s.shares, upperLimit: s.upperLimit, lowerLimit: s.lowerLimit, prev: s.prev, unit: s.unit, open: s.open, ...this.quote(s) })), detail: this.detail(code, true), account: this.account(), orders: this.orders.toReversed() };
+    return { seed: this.seed, tick: this.tick, time: this.time, reference: this.reference, sourceDate: MARKET_DATA.asOf, index: this.index(), stocks: this.stocks.map(s => ({ code: s.code, name: s.name, rank: s.rank, shares: s.shares, upperLimit: s.upperLimit, lowerLimit: s.lowerLimit, prev: s.prev, open: s.open, ...this.quote(s) })), detail: this.detail(code, true), account: this.account(), orders: this.orders.toReversed() };
   }
-  quote(s) { return { price: s.price, high: s.high, low: s.low, volume: s.volume, turnover: s.turnover, direction: s.direction }; }
+  quote(s) { return { unit: s.unit, price: s.price, high: s.high, low: s.low, volume: s.volume, turnover: s.turnover, direction: s.direction }; }
   checkpoint(status = 'running', now = this.time) {
     const consumedBooks = {};
     for (const s of this.stocks) if (s.bookChanged) {
       consumedBooks[s.code] = Object.fromEntries(['asks','bids'].map(side =>
         [side,{levels:s[side].map(level=>[...level]),tail:s[side].tail && {...s[side].tail}}]));
     }
-    return { version: 1, consumedBooks, reference:this.reference,lastQuoteTime:this.time, tradingDay:this.day, dayStats:Object.fromEntries(this.stocks.map(({code,prev,open,high,low,volume,turnover})=>[code,{prev,open,high,low,volume,turnover}])), status, seed: this.seed, tick: this.tick, updatedAt: now, closedAt: status === 'closed' ? new Date(now).toISOString() : null, prices: Object.fromEntries(this.stocks.map(s => [s.code, s.price])), units: Object.fromEntries(this.stocks.map(s => [s.code, s.unit])), index: this.index(), simulation: { elapsedMs: this.elapsedMs, recentEvents: this.recentEvents }, account: { cash: this.cash, cashRevision: this.cashRevision, lastCashOperation: this.lastCashOperation, realized: this.realized, holdings: [...this.holdings.values()], orders: this.orders, nextOrderId: this.nextOrderId } };
+    return { version: 1, quoteGridVersion: 2, consumedBooks, reference:this.reference,lastQuoteTime:this.time, tradingDay:this.day, dayStats:Object.fromEntries(this.stocks.map(({code,prev,open,high,low,volume,turnover})=>[code,{prev,open,high,low,volume,turnover}])), status, seed: this.seed, tick: this.tick, updatedAt: now, closedAt: status === 'closed' ? new Date(now).toISOString() : null, prices: Object.fromEntries(this.stocks.map(s => [s.code, s.price])), units: Object.fromEntries(this.stocks.map(s => [s.code, s.unit])), index: this.index(), simulation: { elapsedMs: this.elapsedMs, recentEvents: this.recentEvents }, account: { cash: this.cash, cashRevision: this.cashRevision, lastCashOperation: this.lastCashOperation, realized: this.realized, holdings: [...this.holdings.values()], orders: this.orders, nextOrderId: this.nextOrderId } };
   }
 }

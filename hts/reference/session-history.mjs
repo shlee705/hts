@@ -1,7 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {gunzipSync} from 'node:zlib';
 import {MINUTE} from '../calendar.mjs';
-import {seededRandom, tickSize} from '../market.mjs';
+import {seededRandom} from '../market.mjs';
+import {ceilTick, floorTick, roundTick} from '../public/tick-size.mjs';
 import {PERIODS} from '../candles.mjs';
 import {MARKET_DATA} from '../public/market-data.mjs';
 const root = new URL('./', import.meta.url);
@@ -31,12 +32,14 @@ async function prepare(symbol) {
         if(t===close)break;
         if(nextKnown<=t){nextKnown=t+MINUTE;while(nextKnown<close&&!known.has(nextKnown))nextKnown+=MINUTE;}
         const target=known.get(nextKnown)?.[1]??c;
-        const unit=tickSize(price);
-        const round=p=>Math.min(h,Math.max(l,Math.round(p/unit)*unit));
+        // Keep provider rows verbatim. Each interpolated OHLC value is a
+        // tradable quote, even next to an off-grid historical observation.
+        const round=p=>Math.min(floorTick(h), Math.max(ceilTick(l), roundTick(p)));
         const steps=(nextKnown-t)/MINUTE;
-        const finish=steps===1?target:round(price+(target-price)/steps+(rand()-.5)*price*.0009);
+        const open=round(price);
+        const finish=round(steps===1?target:price+(target-price)/steps+(rand()-.5)*price*.0009);
         const volume=missing===1?remaining:Math.min(remaining,Math.round(remaining/missing*(.5+rand())));
-        row=[t,price,Math.max(price,finish),Math.min(price,finish),finish,volume]; remaining-=volume;missing--;
+        row=[t,open,Math.max(open,finish),Math.min(open,finish),finish,volume]; remaining-=volume;missing--;
       }
       price=row[4];
       for(const [p,n] of intradayPeriods){

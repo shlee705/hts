@@ -1,4 +1,5 @@
 import { STOCKS } from './public/market-data.mjs';
+import { tickSize } from './public/tick-size.mjs';
 
 const codes = new Set(STOCKS.map(s => s.code));
 const units = new Set([1, 5, 10, 50, 100, 500, 1000]);
@@ -43,11 +44,14 @@ function validateCashOperation(account) {
 
 export function validateCheckpoint(state, members = codes) {
   if (state?.version !== 1 || !['running', 'closed'].includes(state.status) || !timestamp(state.updatedAt)) invalid('상태·시각');
+  const variableGrid = state.quoteGridVersion === 2;
+  if (state.quoteGridVersion !== undefined && !variableGrid) invalid('호가 형식');
   if (state.status === 'closed' && (typeof state.closedAt !== 'string' || !Number.isFinite(Date.parse(state.closedAt)))) invalid('종료 시각');
   if (Object.keys(state.prices ?? {}).length !== members.size) invalid('구성 종목');
   for (const code of members) {
     const price = state.prices?.[code];
     if (!positive(price)) invalid('종가');
+    if (variableGrid && state.units?.[code] !== tickSize(price)) invalid('호가 단위');
     if (state.units !== undefined && (!units.has(state.units?.[code]) || price % state.units[code] !== 0)) invalid('호가 단위');
   }
   for (const [code, book] of Object.entries(state.consumedBooks ?? {})) {
@@ -55,14 +59,21 @@ export function validateCheckpoint(state, members = codes) {
     for (const side of ['asks','bids']) {
       const depth = book?.[side], direction = side === 'asks' ? 1 : -1;
       const step = direction * state.units?.[code];
-      if (!Array.isArray(depth?.levels) || !depth.levels.every(([price,size], i, rows) =>
-        positive(price) && positive(size) && price % step === 0 &&
-        (i === 0 || direction * (price-rows[i-1][0]) > 0))) invalid('호가 잔량');
+      const onGrid = price => price % (variableGrid ? tickSize(price) : step) === 0;
+      if (!Array.isArray(depth?.levels) || !depth.levels.every((row, i, rows) => {
+        if (!Array.isArray(row)) return false;
+        const [price,size] = row;
+        return positive(price) && positive(size) && onGrid(price) &&
+          (i === 0 || direction * (price-rows[i-1][0]) > 0);
+      })) invalid('호가 잔량');
       const tail = depth.tail;
-      if (tail && (tail.step !== step || !Number.isSafeInteger(tail.next) ||
+      if (!tail) continue;
+      if (variableGrid ? (tail.direction !== direction || !whole(tail.nearRemaining) || tail.nearRemaining > 10) : tail.step !== step)
+        invalid('호가 진행 방향');
+      if (!Number.isSafeInteger(tail.next) || (variableGrid && tail.next < 0) ||
           !positive(tail.end) || !Number.isSafeInteger(tail.seed) ||
-          tail.next % step !== 0 || tail.end % step !== 0 ||
-          (depth.levels.length && direction*(tail.next-depth.levels.at(-1)[0])<=0)))
+          !onGrid(tail.next) || !onGrid(tail.end) ||
+          (depth.levels.length && direction*(tail.next-depth.levels.at(-1)[0])<=0))
         invalid('호가 가격대');
     }
   }

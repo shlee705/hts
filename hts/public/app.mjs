@@ -1,4 +1,5 @@
 import { INDEX_CODE, INDEX_NAME, STOCKS } from './market-data.mjs';
+import { tickSize } from './tick-size.mjs';
 import { createQuoteFeed, createOrderEntry, fillableQuantity } from './order-entry.mjs';
 import { createCandleHistory, createCandleRenderer, periods } from './candle-chart.mjs';
 import { createChartNavigation } from './chart-navigation.mjs';
@@ -361,10 +362,12 @@ function estimate() {
     text(refs['market-fill-help'], `표시된 10단계 호가의 체결 가능 수량 ${fmt(filled)}주`);
   } else {
     text(refs['order-estimate'], `${fmt(Math.max(0, Number(refs['order-price'].value)))}원`);
+    const inputPrice = refs['order-price'].valueAsNumber;
+    const unit = tickSize(inputPrice > 0 ? inputPrice : s.price);
+    text(refs['price-help'], `주문가 기준 ${fmt(unit)}원 단위 · 호가 클릭으로 가격 입력`);
   }
   text(refs['available-label'], side === 'buy' ? '매수 가능 금액' : '매도 가능 수량');
   text(refs['order-available'], side === 'buy' ? `${fmt(state.account.available)}원` : `${fmt(state.account.positions.find(p => p.code === selected)?.available || 0)}주`);
-  text(refs['price-help'], `${fmt(s.unit)}원 단위 · 호가 클릭으로 가격 입력`);
   updateSubmit();
 }
 function formReady() {

@@ -7,6 +7,7 @@ import { CandleHistory, INDEX_CODE } from './candles.mjs';
 import { adjustCash, cashState } from './cash.mjs';
 import { OrderArchive } from './order-archive.mjs';
 import { openMarketStorage } from './market-storage.mjs';
+import { dailyLimits } from './public/tick-size.mjs';
 
 import {cutoff,daily} from './reference-history.mjs';
 import {tradingDay,missingMinutes} from './calendar.mjs';
@@ -43,7 +44,8 @@ if (!previous) {
     const rows=daily[s.code], [,open,high,low,,volume]=rows.at(-1);
     seedDaily(candles.books.get(s.code),rows.at(-1));
     Object.assign(s,{open,high,low,volume,prev:rows.at(-2)[4]});
-    s.upperLimit=Math.floor(s.prev*130/(100*s.unit))*s.unit;s.lowerLimit=Math.ceil(s.prev*70/(100*s.unit))*s.unit; market.makeBook(s);
+    Object.assign(s, dailyLimits(s.prev));
+    market.makeBook(s);
   }
   market.indexPrevious=indexDays.at(-2)[4];
   market.indexHigh=indexDays.at(-1)[2];market.indexLow=indexDays.at(-1)[3];market.updateIndex();

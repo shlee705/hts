@@ -21,7 +21,7 @@ const codes = new Set(STOCKS.map(s => s.code));
 const clients = new Set(), pending = new Map(), files = new Map();
 const loop = monitorEventLoopDelay({ resolution: 10 }); loop.enable();
 let worker, ready = false, stopping = false, requestNumber = 0, sentBytes = 0, coalesced = 0, metrics = {}, tick = 0, connecting = 0;
-for (const [file, type] of [['index.html', 'text/html'], ['account.html', 'text/html'], ['account.mjs', 'text/javascript'], ['cash.html', 'text/html'], ['cash.mjs', 'text/javascript'], ['order-entry.mjs', 'text/javascript'], ['candle-chart.mjs', 'text/javascript'], ['chart-navigation.mjs', 'text/javascript'], ['app.mjs', 'text/javascript'], ['style.css', 'text/css'], ['market-data.mjs', 'text/javascript'], ['favicon.svg', 'image/svg+xml']]) {
+for (const [file, type] of [['index.html', 'text/html'], ['account.html', 'text/html'], ['account.mjs', 'text/javascript'], ['cash.html', 'text/html'], ['cash.mjs', 'text/javascript'], ['order-entry.mjs', 'text/javascript'], ['candle-chart.mjs', 'text/javascript'], ['chart-navigation.mjs', 'text/javascript'], ['app.mjs', 'text/javascript'], ['style.css', 'text/css'], ['market-data.mjs', 'text/javascript'], ['tick-size.mjs', 'text/javascript'], ['favicon.svg', 'image/svg+xml']]) {
   files.set('/' + file, { body: await readFile(path.join(here, 'public', file)), type: type + '; charset=utf-8' });
 }
 files.set('/', files.get('/index.html'));

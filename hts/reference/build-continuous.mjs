@@ -2,7 +2,8 @@ import {mkdir, writeFile, rename} from 'node:fs/promises';
 import {gzipSync} from 'node:zlib';
 import {daily, referenceBars, cutoff} from './session-history.mjs';
 import {MINUTE, tradingDay} from '../calendar.mjs';
-import {seededRandom, tickSize} from '../market.mjs';
+import {seededRandom} from '../market.mjs';
+import {roundTick} from '../public/tick-size.mjs';
 import {PERIODS} from '../candles.mjs';
 import {STOCKS, INDEX_CODE, constituentIndex} from '../public/market-data.mjs';
 
@@ -15,21 +16,17 @@ async function stockMinutes(code) {
   function fill(left, end, target, nextVolume) {
     const count = (end - left[0]) / MINUTE - 1;
     const random = seededRandom(Math.floor(left[0]/MINUTE) ^ parseInt(code,36));
-    let open = left[4], latent = open;
+    let open = roundTick(left[4]), latent = open;
     const volume = Math.max(1,(left[6]+nextVolume)/20);
-    const round = price => {
-      const unit = tickSize(price);
-      return Number((Math.max(unit,Math.round(price/unit)*unit)).toFixed(2));
-    };
     for (let i=1; i<=count; i++) {
       const remaining = count-i+1;
       const trend = left[4]+(target-left[4])*i/count;
       latent += (target-latent)/remaining + (trend-latent)*0.04 +
         (random()-.5)*open*.001*Math.sqrt((remaining-1)/remaining);
-      const close = remaining===1 ? target : round(latent);
+      const close = roundTick(remaining===1 ? target : latent);
       const time = left[0]+i*MINUTE;
-      minutes.push([time,open,Math.max(open,close,round(Math.max(open,close)*(1+random()*.0003))),
-        Math.min(open,close,round(Math.min(open,close)*(1-random()*.0003))),close,
+      minutes.push([time,open,Math.max(open,close,roundTick(Math.max(open,close)*(1+random()*.0003))),
+        Math.min(open,close,roundTick(Math.min(open,close)*(1-random()*.0003))),close,
         tradingDay(time),Math.max(1,Math.round(volume*(0.3+random()*1.4)))]);
       open=close;
     }
