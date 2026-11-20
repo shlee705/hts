@@ -1,69 +1,73 @@
-import {mkdir, writeFile, rename} from 'node:fs/promises';
-import {gzipSync} from 'node:zlib';
-import {daily, referenceBars, cutoff} from './session-history.mjs';
+import {mkdir, readFile, rename, writeFile} from 'node:fs/promises';
+import {gzipSync, gunzipSync} from 'node:zlib';
 import {MINUTE, tradingDay} from '../calendar.mjs';
-import {seededRandom, tickSize} from '../market.mjs';
-import {INDEX_CODE, PERIODS} from '../candles.mjs';
+import {PERIODS, INDEX_CODE} from '../candles.mjs';
+import {STOCKS, indexFromCap} from '../public/market-data.mjs';
+import {roundPrice} from '../public/price-grid.mjs';
 
-const root = new URL('./continuous/', import.meta.url);
-await mkdir(root, {recursive:true});
-let total = 0;
-for (const code of Object.keys(daily)) {
-  const source = await referenceBars(code,'1m');
-  const minutes = [];
-  const index = code === INDEX_CODE;
-  function fill(left, end, target, nextVolume) {
-    const count = (end - left[0]) / MINUTE - 1;
-    const random = seededRandom(Math.floor(left[0]/MINUTE) ^ parseInt(code,36));
-    let open = left[4], latent = open;
-    const volume = Math.max(1,(left[6]+nextVolume)/20);
-    const round = price => {
-      const unit = index ? 0.01 : tickSize(price);
-      return Number((Math.max(unit,Math.round(price/unit)*unit)).toFixed(2));
-    };
-    for (let i=1; i<=count; i++) {
-      const remaining = count-i+1;
-      const trend = left[4]+(target-left[4])*i/count;
-      latent += (target-latent)/remaining + (trend-latent)*0.04 +
-        (random()-.5)*open*.001*Math.sqrt((remaining-1)/remaining);
-      const close = remaining===1 ? target : round(latent);
-      const time = left[0]+i*MINUTE;
-      minutes.push([time,open,Math.max(open,close,round(Math.max(open,close)*(1+random()*.0003))),
-        Math.min(open,close,round(Math.min(open,close)*(1-random()*.0003))),close,
-        tradingDay(time),Math.max(1,Math.round(volume*(0.3+random()*1.4)))]);
-      open=close;
-    }
-    total+=count;
+const source = new URL('./', import.meta.url);
+const destination = new URL('kospi10/', source);
+const start = Date.parse('2026-11-05T09:00:00+09:00');
+const end = Date.parse('2026-11-18T15:30:00+09:00');
+const index = [];
+const daily = JSON.parse(await readFile(new URL('daily.json', source)));
+
+async function unpack(file) {
+  return JSON.parse(gunzipSync(await readFile(new URL(file, source))));
+}
+
+function aggregate(minutes, size) {
+  if (size === 1) return minutes;
+  const rows = [];
+  for (const [time, open, high, low, close, , volume] of minutes) {
+    const bucket = Math.floor(time / (size * MINUTE)) * size * MINUTE;
+    const last = rows.at(-1);
+    if (last?.[0] === bucket) {
+      last[2] = Math.max(last[2], high);
+      last[3] = Math.min(last[3], low);
+      last[4] = close;
+      last[6] += volume;
+    } else rows.push([bucket, open, high, low, close, size === 1440 ? null : tradingDay(time), volume]);
   }
-  for (const bar of source) {
-    const last = minutes.at(-1);
-    if (last && bar[0]>last[0]+MINUTE) fill(last,bar[0],bar[1],bar[6]);
-    minutes.push(bar);
-  }
-  const last=minutes.at(-1);
-  if(last[0]<cutoff) fill(last,cutoff+MINUTE,daily[code].at(-1)[4],last[6]);
-  const dir=new URL(code+'/',root);
-  await mkdir(dir,{recursive:true});
-  for(const [period,size] of Object.entries(PERIODS)){
-    let rows=minutes;
-    if(size!==1){
-      rows=[];
-      for(const [time,o,h,l,c,,v] of minutes){
-        const start=Math.floor(time/(size*MINUTE))*size*MINUTE;
-        const prev=rows.at(-1);
-        if(prev?.[0]===start){
-          prev[2]=Math.max(prev[2],h);prev[3]=Math.min(prev[3],l);prev[4]=c;prev[6]+=v;
-        } else rows.push([start,o,h,l,c,size===1440?null:tradingDay(start),v]);
-      }
-      if(period==='1d'){
-        // Preserve published exchange daily candles; add daily bars on missing dates.
-        const official=new Map((await referenceBars(code,period)).map(b=>[b[0],b]));
-        rows=rows.map(b=>official.get(b[0])??b);
+  return rows;
+}
+
+async function save(code, minutes) {
+  const dir = new URL(code + '/', destination);
+  await mkdir(dir, {recursive: true});
+  for (const [period, size] of Object.entries(PERIODS)) {
+    const rows = aggregate(minutes, size);
+    if (period === '1d' && code !== INDEX_CODE) {
+      const official = new Map(daily[code].map(([date, ...values]) => [Date.parse(date), values]));
+      for (const row of rows) {
+        const values = official.get(row[0]);
+        if (values) row.splice(1, 6, ...values.slice(0, 4), null, values[4]);
       }
     }
-    const dest=new URL(period+'.json.gz',dir),tmp=new URL(period+'.tmp',dir);
-    await writeFile(tmp,gzipSync(JSON.stringify(rows),{level:3}));
-    await rename(tmp,dest);
+    const temp = new URL(period + '.tmp', dir);
+    await writeFile(temp, gzipSync(JSON.stringify(rows), {level: 3}));
+    await rename(temp, new URL(period + '.json.gz', dir));
   }
 }
-console.log('Stored additional minutes:',total,'series:',Object.keys(daily).length);
+
+for (const {code, shares} of STOCKS) {
+  const actual = new Map((await unpack('minutes/' + code + '.json.gz')).map(row => [row[0], row]));
+  const minutes = await unpack('continuous/' + code + '/1m.json.gz');
+  if (minutes.length !== (end - start) / MINUTE + 1) throw Error('Incomplete history for ' + code);
+  for (const [i, bar] of minutes.entries()) {
+    const time = start + i * MINUTE;
+    if (bar[0] !== time) throw Error('Misaligned minute for ' + code);
+    const observed = actual.get(time);
+    if (observed) bar.splice(1, 6, ...observed.slice(1, 5), tradingDay(time), observed[5]);
+    else for (let field = 1; field <= 4; field++) bar[field] = roundPrice(bar[field]);
+    const totals = index[i] ??= [time, 0, 0, 0, 0, tradingDay(time), 0];
+    for (let field = 1; field <= 4; field++) totals[field] += bar[field] * shares;
+    totals[6] += bar[6];
+  }
+  await save(code, minutes);
+}
+for (const bar of index) {
+  for (let field = 1; field <= 4; field++) bar[field] = indexFromCap(bar[field]);
+}
+await save(INDEX_CODE, index);
+console.log('Built %d minutes for %d stocks and %s.', index.length, STOCKS.length, INDEX_CODE);

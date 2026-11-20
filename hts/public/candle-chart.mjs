@@ -167,15 +167,10 @@ export function createCandleRenderer(refs) {
     const width = Math.max(1, Math.min(15, slotWidth * 0.7));
     const dividers = [];
     if (view.period !== '1d') {
-      for (let i = 0; i < visible.length; i++) {
-        const start = visible[i][0];
-        // 15:30 Asia/Seoul is 06:30 UTC.
-        const marker = Math.floor(start / 86400000) * 86400000 + 390 * 60000;
-        const end = (Math.floor(start / duration) + 1) * duration;
-        const next = view.bars[first + i + 1]?.[0];
-        // Historical sessions may end without a bar starting at 15:30.
-        if (marker < start || marker > end || marker >= (next ?? Infinity) ||
-            marker > (view.through ?? Infinity)) continue;
+      const day = 86400000;
+      const end = (Math.floor(visible.at(-1)[0] / duration) + 1) * duration;
+      for (let marker = Math.ceil(origin / day) * day;
+           marker < end && marker <= (view.through ?? Infinity); marker += day) {
         dividers.push('M' + timeX(marker) + ',7V158');
       }
     }
@@ -222,7 +217,7 @@ export function createCandleRenderer(refs) {
     const endTime = last[0];
     const tickStart = firstTick <= last[0] ? firstTick : origin;
     for (let time = tickStart; time <= endTime; time += step) {
-      const pixels = timeX(time + duration / 2) * axisWidth / 620;
+      const pixels = timeX(isDaily ? time + duration / 2 : time) * axisWidth / 620;
       if (!timeTicks[used]) {
         const tick = document.createElement('span');
         refs['chart-time-ticks'].append(tick);

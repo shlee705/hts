@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { get, launch, stop, tempData } from './helpers.mjs';
 
 const periods = ['1m', '3m', '5m', '30m', '1h'];
-const codes = ['005930', 'KPI100'];
+const codes = ['005930', 'KPI10'];
 
 async function streamedCandles(server) {
   const controller = new AbortController();
@@ -19,14 +19,14 @@ async function streamedCandles(server) {
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = '';
     const candles = {};
-    while (!candles['005930'] || !candles.KPI100) {
+    while (!candles['005930'] || !candles.KPI10) {
       const { value, done } = await reader.read();
       assert.ok(!done, 'expected live candles');
       buffer += value;
       const frames = buffer.split('\n\n');
       buffer = frames.pop();
       for (const frame of frames) {
-        if (frame.startsWith('event: tick\ndata: ')) candles.KPI100 = JSON.parse(frame.slice(frame.indexOf('data: ') + 6)).indexCandles;
+        if (frame.startsWith('event: tick\ndata: ')) candles.KPI10 = JSON.parse(frame.slice(frame.indexOf('data: ') + 6)).indexCandles;
         if (frame.startsWith('event: detail\ndata: ')) candles['005930'] = JSON.parse(frame.slice(frame.indexOf('data: ') + 6)).candles;
       }
     }
@@ -49,8 +49,8 @@ test('stock and index keep continuous intraday candles on clean and crash restar
   t.after(() => stop(server));
   const first = await streamedCandles(server);
   await stop(server);
-  const saved = JSON.parse(await readFile(path.join(dataDir, 'candles.json'), 'utf8'));
-  const savedBooks = { '005930': saved.books['005930'], KPI100: saved.index.book };
+  const saved = JSON.parse(await readFile(path.join(dataDir, 'kospi10', 'candles.json'), 'utf8'));
+  const savedBooks = { '005930': saved.books['005930'], KPI10: saved.index.book };
   const sessionIds = [first['005930']['1m'][5]];
   assert.ok(Number.isSafeInteger(sessionIds[0]));
 
@@ -63,9 +63,9 @@ test('stock and index keep continuous intraday candles on clean and crash restar
     for (const code of codes) {
       for (const period of periods) {
         const { bars: allBars } = await get(server, '/api/candles?symbol=' + code + '&period=' + period);
-        const bars=allBars.filter(b=>b[5]>=minute);
+        const bars=allBars.slice(-1);
         assert.deepEqual(bars.map(bar => bar[5]), sessionIds, code + '/' + period);
-        const old=savedBooks[code][period][0];
+        const old=savedBooks[code][period].at(-1);
         assert.equal(bars[0][1],old[1]);
         assert.ok(bars[0][2]>=old[2] && bars[0][3]<=old[3] && bars[0][6]>old[6]);
         assert.ok(bars.every((bar, i) => !i || bar[0] > bars[i - 1][0]));

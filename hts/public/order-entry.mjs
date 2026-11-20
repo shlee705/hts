@@ -73,7 +73,7 @@ export function createOrderEntry({ storage, send, lookup, uuid, notify }) {
       const { status, data } = action === 'lookup' ? await lookup(pending.requestId) : await send(pending);
       if (status === 200 && data.requestId === pending.requestId && data.id) {
         const matches = data.code === pending.code && data.side === pending.side && data.type === pending.type
-          && data.quantity === pending.quantity && (pending.type !== 'limit' || data.limit === pending.price);
+          && data.quantity === pending.quantity && (pending.type !== 'limit' || data.limit === pending.price || data.requestedLimit === pending.price);
         if (matches) finish('accepted', data);
         else finish('rejected', '이 요청 번호에는 다른 주문이 기록되어 있습니다. 주문내역을 확인하세요.');
       }

@@ -1,10 +1,10 @@
 import { open, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { STOCKS } from './public/market-data.mjs';
+import { STOCKS, MARKET_DATA, indexFromCap } from './public/market-data.mjs';
 
 export const PERIODS = Object.freeze({ '1m': 1, '3m': 3, '5m': 5, '30m': 30, '1h': 60, '1d': 1440 });
 export const BAR_LIMIT = 100;
-export const INDEX_CODE = 'KPI100';
+export const INDEX_CODE = MARKET_DATA.indexCode;
 const kstOffset = 9 * 60 * 60000;
 const periods = Object.entries(PERIODS);
 const emptyBook = () => Object.fromEntries(periods.map(([period]) => [period, []]));
@@ -47,13 +47,13 @@ function validBook(book, validPrice, cap) {
 function historicalIndex(row) {
   if (Number.isFinite(row.index?.value) && row.index.value > 0) return row.index.value;
   // Journals predating the index still include all constituent prices.
-  let ratios = 0;
+  let cap = 0;
   for (const stock of STOCKS) {
     const price = row.prices?.[stock.code];
     if (!Number.isSafeInteger(price) || price < 1) return undefined;
-    ratios += price / stock.close;
+    cap += price * stock.shares;
   }
-  return 1000 * ratios / STOCKS.length;
+  return indexFromCap(cap);
 }
 
 // Tick rows include the session on new servers. For earlier journals the open

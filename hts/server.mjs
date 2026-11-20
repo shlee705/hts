@@ -21,7 +21,7 @@ const codes = new Set(STOCKS.map(s => s.code));
 const clients = new Set(), pending = new Map(), files = new Map();
 const loop = monitorEventLoopDelay({ resolution: 10 }); loop.enable();
 let worker, ready = false, stopping = false, requestNumber = 0, sentBytes = 0, coalesced = 0, metrics = {}, tick = 0, connecting = 0;
-for (const [file, type] of [['index.html', 'text/html'], ['account.html', 'text/html'], ['account.mjs', 'text/javascript'], ['cash.html', 'text/html'], ['cash.mjs', 'text/javascript'], ['order-entry.mjs', 'text/javascript'], ['candle-chart.mjs', 'text/javascript'], ['chart-navigation.mjs', 'text/javascript'], ['app.mjs', 'text/javascript'], ['style.css', 'text/css'], ['market-data.mjs', 'text/javascript'], ['favicon.svg', 'image/svg+xml']]) {
+for (const [file, type] of [['index.html', 'text/html'], ['account.html', 'text/html'], ['account.mjs', 'text/javascript'], ['cash.html', 'text/html'], ['cash.mjs', 'text/javascript'], ['order-entry.mjs', 'text/javascript'], ['candle-chart.mjs', 'text/javascript'], ['chart-navigation.mjs', 'text/javascript'], ['app.mjs', 'text/javascript'], ['style.css', 'text/css'], ['market-data.mjs', 'text/javascript'], ['price-grid.mjs', 'text/javascript'], ['favicon.svg', 'image/svg+xml']]) {
   files.set('/' + file, { body: await readFile(path.join(here, 'public', file)), type: type + '; charset=utf-8' });
 }
 files.set('/', files.get('/index.html'));
@@ -162,7 +162,7 @@ server.listen(port, '127.0.0.1', () => {
   worker.on('message', message => {
     if (message.type === 'ready') {
       ready = true;
-      console.log(`\n  PULSE · KOSPI 100종목 HTS\n  Local: http://localhost:${port}\n  Tick: ${interval} ms · Seed: ${seed}\n  Data: ${dataDir}\n  ${message.recovered ? 'Recovered market checkpoint.' : 'Market ready.'}\n  Ctrl+C: save checkpoint and stop.\n`);
+      console.log(`\n  PULSE · KOSPI 10종목 HTS\n  Local: http://localhost:${port}\n  Tick: ${interval} ms · Seed: ${seed}\n  Data: ${dataDir}\n  ${message.recovered ? 'Recovered market checkpoint.' : 'Market ready.'}\n  Ctrl+C: save checkpoint and stop.\n`);
       process.send?.({ type: 'ready', port });
     } else if (message.type === 'response') {
       const p = pending.get(message.request); if (!p) return;

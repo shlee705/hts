@@ -2,7 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {gunzipSync} from 'node:zlib';
 import {MINUTE} from '../calendar.mjs';
 import {seededRandom, tickSize} from '../market.mjs';
-import {PERIODS, INDEX_CODE} from '../candles.mjs';
+import {PERIODS} from '../candles.mjs';
 const root = new URL('./', import.meta.url);
 export const daily = JSON.parse(await readFile(new URL('daily.json', root)));
 export const cutoff = Date.parse(daily.KPI100.at(-1)[0]+'T15:30:00+09:00');
@@ -14,7 +14,7 @@ function merge(rows, incoming) {
   last[2]=Math.max(last[2],incoming[2]);last[3]=Math.min(last[3],incoming[3]);last[4]=incoming[4];last[6]+=incoming[6];
 }
 async function prepare(code) {
-  const isIndex=code===INDEX_CODE, symbol=isIndex?'KPI100':code, scale=isIndex?1000:1;
+  const isIndex=code==='KPI100', symbol=isIndex?'KPI100':code, scale=isIndex?1000:1;
   const raw=JSON.parse(gunzipSync(await readFile(new URL('minutes/'+symbol+'.json.gz',root))));
   const known=new Map(raw.map(r=>[r[0],r]));
   const books=Object.fromEntries(Object.keys(PERIODS).map(p=>[p,[]]));

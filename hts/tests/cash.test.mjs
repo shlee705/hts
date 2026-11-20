@@ -40,7 +40,7 @@ test('cash updates appear on the live feed, are committed before OK and do not r
     assert.equal(result.status, 200);
     assert.equal(result.data.ok, true);
     assert.equal(result.data.cash, initial.cash + deposit.amount);
-    const saved = JSON.parse(await readFile(path.join(dataDir, 'market-state.json'), 'utf8'));
+    const saved = JSON.parse(await readFile(path.join(dataDir, 'kospi10', 'market-state.json'), 'utf8'));
     assert.equal(saved.account.cash, result.data.cash);
     assert.equal(saved.account.cashRevision, initial.revision + 1);
     assert.equal(saved.account.lastCashOperation.requestId, deposit.requestId);
@@ -94,7 +94,7 @@ test('failed cash persistence returns 503 and restart recovers the last confirme
   t.after(() => stop(server));
   const good = await post(server, '/api/cash', transfer('cash-disk-good', 0, 5000));
   assert.equal(good.data.ok, true);
-  const checkpointPath = path.join(dataDir, 'market-state.json');
+  const checkpointPath = path.join(dataDir, 'kospi10', 'market-state.json');
   const durable = await readFile(checkpointPath, 'utf8');
   // An empty test directory at the staging path makes the next file write fail.
   const obstruction = checkpointPath + '.tmp';

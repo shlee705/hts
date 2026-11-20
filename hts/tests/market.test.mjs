@@ -1,3 +1,4 @@
+import {adjacentPrice} from '../public/price-grid.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Market, INITIAL_CASH } from '../market.mjs';
@@ -5,15 +6,15 @@ import { STOCKS } from '../public/market-data.mjs';
 const make = () => new Market({ seed: 100, now: 1000000 });
 let request = 0;
 const buy = (m, extra = {}) => m.placeOrder({ code: '005930', side: 'buy', type: 'market', quantity: 1, requestId: `test-request-${request++}`, ...extra });
-test('exactly 100 distinct real KOSPI symbols start at hardcoded closing prices', () => {
-  const m = make(); assert.equal(STOCKS.length, 100); assert.equal(new Set(STOCKS.map(s => s.code)).size, 100);
+test('exactly 10 distinct real KOSPI symbols start at hardcoded closing prices', () => {
+  const m = make(); assert.equal(STOCKS.length, 10); assert.equal(new Set(STOCKS.map(s => s.code)).size, 10);
   for (const s of m.stocks) { assert.equal(s.price, STOCKS.find(q => q.code === s.code).close); assert.equal(s.prev, s.price); assert.equal(s.history.length, 1); assert.equal(s.volume, 0); }
 });
 test('same seed and tick sequence reproduce prices, books and volumes', () => {
   const a = make(), b = make(); for (let i = 0; i < 500; i++) { a.step(); b.step(); }
   assert.deepEqual(a.state(), b.state()); const c = new Market({ seed: 101, now: 1000000 }); c.step(); assert.notEqual(a.getStock('005930').price, c.getStock('005930').price);
 });
-test('history and trades remain bounded over 300,000 symbol updates', () => {
+test('history and trades remain bounded over 30,000 symbol updates', () => {
   const m = make(); for (let i = 0; i < 3000; i++) m.step();
   for (const s of m.stocks) {
     assert.equal(s.history.length, 180); assert.equal(s.trades.length, 30); assert.ok(s.price >= s.prev * .7 && s.price <= s.prev * 1.3); assert.ok(s.volume > 0);
@@ -33,10 +34,10 @@ test('market buy/sell debit and credit actual execution prices, reject overselli
 });
 test('buy cash and sell shares are reserved and restored on cancellation', () => {
   const m = make(), s = m.getStock('005930');
-  const limit = buy(m, { type: 'limit', price: Math.ceil(s.prev * .7 / s.unit) * s.unit, quantity: 10 }); assert.equal(limit.status, 'open');
+  const limit = buy(m, { type: 'limit', price: s.lowerLimit, quantity: 10 }); assert.equal(limit.status, 'open');
   assert.equal(m.availableCash(), INITIAL_CASH - limit.limit * 10);
   m.cancelOrder(limit.id); assert.equal(m.availableCash(), INITIAL_CASH); assert.throws(() => m.cancelOrder(limit.id));
-  buy(m, { quantity: 10 }); const sell = buy(m, { side: 'sell', type: 'limit', price: Math.floor(s.prev * 1.3 / s.unit) * s.unit, quantity: 8 });
+  buy(m, { quantity: 10 }); const sell = buy(m, { side: 'sell', type: 'limit', price: s.upperLimit, quantity: 8 });
   assert.equal(m.availableShares(s.code), 2); assert.throws(() => buy(m, { side: 'sell', quantity: 3 }));
   m.cancelOrder(sell.id); assert.equal(m.availableShares(s.code), 10);
 });
@@ -66,7 +67,7 @@ test('restart uses the last current price as close, preserves account, preserves
 });
 test('limit prices clamp before execution, reservation and request replay', () => {
   const m = make(), stock = m.getStock('005930');
-  for (const [price,limit] of [[stock.lowerLimit-1,stock.lowerLimit],[stock.upperLimit+1,stock.upperLimit]]) {
+  for (const [price,limit] of [[adjacentPrice(stock.lowerLimit,-1),stock.lowerLimit],[adjacentPrice(stock.upperLimit,1),stock.upperLimit]]) {
     const requestId='clamp-price-'+price;
     const order=buy(m,{type:'limit',price,requestId});
     assert.equal(order.limit,limit);
@@ -124,7 +125,7 @@ test('Samsung round-trip consumes hidden prices to the ceiling and then to the s
   assert.equal(s.price,190000);
   assert.ok(sale.average>190000);
   assert.equal(m.prints.at(-1)[1],190000);
-  for(let i=1;i<m.prints.length;i++)assert.equal(m.prints[i-1][1]-m.prints[i][1],s.unit);
+  for(let i=1;i<m.prints.length;i++)assert.equal(adjacentPrice(m.prints[i-1][1],-1),m.prints[i][1]);
   assert.equal(m.detail(s.code).bids[0][0],190000-s.unit);
   assert.equal(m.detail(s.code).asks[0][0],190000);
   assert.equal(m.placeOrder(request).filled,sale.filled);
@@ -134,7 +135,7 @@ test('Samsung round-trip consumes hidden prices to the ceiling and then to the s
 });
 test('after a 116493-share Samsung sale reaches 193000, subsequent quotes track the last fill',()=>{
   const m=make(), s=m.getStock('005930');
-  s.price=s.upperLimit=247300; s.lowerLimit=133300; s.unit=100;
+  s.price=s.upperLimit=247000; s.lowerLimit=133300; s.unit=500;
   s.dynamics.anchor=s.dynamics.latent=s.price;
   m.makeBook(s);
   m.holdings.set(s.code,{code:s.code,quantity:116493,average:246806});

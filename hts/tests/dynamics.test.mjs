@@ -54,7 +54,7 @@ test('all four event classes gradually move prices in the intended direction and
 test('scheduled events are reproducible, periodic, mixed and bounded', () => {
   const a = new Market({ seed: 45, now: 0 }), b = new Market({ seed: 45, now: 0 });
   const types = new Set(), previousByCode = new Map(); let eventCount = 0;
-  for (let i = 0; i < 700; i++) {
+  for (let i = 0; i < 4000; i++) {
     a.step(); b.step(); assert.deepEqual(a.tickEvents, b.tickEvents);
     for (const event of a.tickEvents) {
       types.add(event.type); eventCount++;
@@ -67,8 +67,8 @@ test('scheduled events are reproducible, periodic, mixed and bounded', () => {
   assert.equal(types.size, 4); assert.ok(eventCount > 200); assert.equal(a.recentEvents.length, PRICE_MODEL.recentEventLimit);
   assert.deepEqual(a.state(), b.state()); assert.deepEqual(a.checkpoint().simulation, b.checkpoint().simulation);
 });
-test('KOSPI 100 matches its formula and retains its level across restarts', () => {
-  const market = quietMarket(); const base=market.index().value; assert.equal(base,6117.19);
+test('KOSPI 10 matches its formula and retains its level across restarts', () => {
+  const market = quietMarket(); const base=market.index().value; assert.equal(base,1000);
   const stock = market.stocks[0]; stock.price = stock.close * 1.1; market.updateIndex();
   assert.ok(Math.abs(market.index().value - base*(1+.1*stock.close*stock.shares/market.stocks.reduce((n,s)=>n+s.close*s.shares,0))) < 1e-9);
   for (const s of market.stocks) s.price = s.close * 1.01;

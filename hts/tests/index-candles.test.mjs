@@ -120,7 +120,7 @@ test('live index bars match the streamed index and all six periods survive serve
   for (const period of periods) assert.equal(tick.indexCandles[period][4],tick.index.value);
   assert.equal((await fetch(server.url+'/api/state?symbol='+INDEX_CODE)).status,400);
   await stop(server);
-  const saved = JSON.parse(await readFile(path.join(dir,'candles.json'),'utf8'));
+  const saved = JSON.parse(await readFile(path.join(dir,'kospi10','candles.json'),'utf8'));
   server = await launch({port:18462,dataDir:dir,interval:60000});
   for (const period of periods) {
     const result = await get(server,'/api/candles?symbol='+INDEX_CODE+'&period='+period);

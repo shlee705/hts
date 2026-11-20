@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Market } from '../market.mjs';
 import { validateCheckpoint } from '../checkpoint.mjs';
@@ -24,7 +24,7 @@ test('two simultaneous recoveries leave one writer and preserve the acknowledged
   const state = await get(winners[0]);
   assert.equal(state.account.positions[0].quantity, 1);
   await stop(winners[0]);
-  const closed = JSON.parse(await readFile(path.join(dataDir, 'market-state.json'), 'utf8'));
+  const closed = JSON.parse(await readFile(path.join(dataDir, 'kospi10', 'market-state.json'), 'utf8'));
   assert.equal(closed.status, 'closed');
   assert.equal(closed.account.orders.length, 1);
 });
@@ -58,7 +58,8 @@ test('valid JSON with inconsistent order, inventory or cash fields is rejected b
     assert.throws(() => validateCheckpoint(copy), /저장된 시세/);
   }
   const dataDir = await tempData('bad-account');
-  const file = path.join(dataDir, 'market-state.json');
+  await mkdir(path.join(dataDir, 'kospi10'));
+  const file = path.join(dataDir, 'kospi10', 'market-state.json');
   const invalid = structuredClone(valid);
   delete invalid.account.nextOrderId;
   const bytes = JSON.stringify(invalid);

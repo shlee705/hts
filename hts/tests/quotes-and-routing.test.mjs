@@ -1,3 +1,4 @@
+import {tickSize,adjacentPrice} from '../public/price-grid.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -49,7 +50,7 @@ test('reopening a real server serves all six prior candle series before the firs
   t.after(() => stop(server));
   for (let attempt = 0; attempt < 100 && !(await get(server, '/api/health')).tick; attempt++) await sleep(30);
   await stop(server);
-  const saved = JSON.parse(await readFile(path.join(dir, 'candles.json'),'utf8'));
+  const saved = JSON.parse(await readFile(path.join(dir, 'kospi10', 'candles.json'),'utf8'));
   server = await launch({port:18449, dataDir:dir, interval:60000});
   assert.equal((await get(server, '/api/health')).tick, 0);
   for (const period of Object.keys(PERIODS)) {
@@ -60,17 +61,17 @@ test('reopening a real server serves all six prior candle series before the firs
   }
 });
 
-test('quote capacity and limits use real per-issue shares and one consistent session price grid', () => {
+test('quote capacity and limits use real per-issue shares and the tick size at each limit', () => {
   const market = new Market();
   const quotes = market.state().stocks;
-  assert.equal(quotes.length,100);
+  assert.equal(quotes.length,10);
   for (const s of quotes) {
     assert.ok(Number.isSafeInteger(s.shares) && s.shares > 0);
     assert.ok(Number.isSafeInteger(s.shares*s.price));
-    assert.equal(s.upperLimit % s.unit,0);
-    assert.equal(s.lowerLimit % s.unit,0);
-    assert.ok(s.upperLimit*100 <= s.prev*130 && (s.upperLimit+s.unit)*100 > s.prev*130);
-    assert.ok(s.lowerLimit*100 >= s.prev*70 && (s.lowerLimit-s.unit)*100 < s.prev*70);
+    assert.equal(s.upperLimit % tickSize(s.upperLimit),0);
+    assert.equal(s.lowerLimit % tickSize(s.lowerLimit),0);
+    assert.ok(s.upperLimit*100 <= s.prev*130 && adjacentPrice(s.upperLimit,1)*100 > s.prev*130);
+    assert.ok(s.lowerLimit*100 >= s.prev*70 && adjacentPrice(s.lowerLimit,-1)*100 < s.prev*70);
   }
   const stock = market.getStock('005930');
   assert.equal(stock.shares,quotes.find(q=>q.code==='005930').shares);

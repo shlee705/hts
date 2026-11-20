@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Market } from '../market.mjs';
 import { get, launch, post, stop, tempData } from './helpers.mjs';
@@ -52,7 +52,8 @@ test('an evicted order is queryable and retryable after restarting with a full h
     const resting = m.placeOrder({ ...order, requestId: 'archive-order-' + i, type: 'limit', price: stock.lowerLimit });
     m.cancelOrder(resting.id);
   }
-  await writeFile(path.join(dataDir, 'market-state.json'), JSON.stringify(m.checkpoint('closed', Date.now())));
+  await mkdir(path.join(dataDir, 'kospi10'));
+  await writeFile(path.join(dataDir, 'kospi10', 'market-state.json'), JSON.stringify(m.checkpoint('closed', Date.now())));
   let server = await launch({ port: 18412, dataDir, interval: 60000 });
   t.after(() => stop(server));
   assert.equal((await submit(server, order)).status, 200);

@@ -16,7 +16,7 @@ const readCounts = { state: 0, candles: 0, cash: 0, orderLookup: 0 };
 function recordError(error) { errors++; firstError ??= error.message; }
 function stream(i, paused = false) {
   return new Promise((resolve, reject) => {
-    const req = http.get(server.url + `/api/events?symbol=${STOCKS[i % 100].code}`, res => {
+    const req = http.get(server.url + `/api/events?symbol=${STOCKS[i % STOCKS.length].code}`, res => {
       if (res.statusCode !== 200) return reject(Error(`SSE status ${res.statusCode}`));
       responses.push(res);
       if (paused) res.pause();
@@ -33,7 +33,7 @@ try {
   const before = await get(server, '/api/health'); const start = performance.now();
   const initialCash = await get(server, '/api/cash');
   let expectedCash = initialCash.cash;
-  console.log(`Load: ${clientCount} active SSE clients + 1 stalled client, 100 symbols / 50ms, ${duration}s, real disk writes.`);
+  console.log(`Load: ${clientCount} active SSE clients + 1 stalled client, ${STOCKS.length} symbols / 50ms, ${duration}s, real disk writes.`);
   const readers = ['state', 'state', 'candles', 'cash'].map(name => (async () => {
     while (run) {
       const began = performance.now();
@@ -48,7 +48,7 @@ try {
           }
         } else if (name === 'cash') {
           assert.ok(Number.isSafeInteger(data.cash) && data.available <= data.cash && data.available >= 0);
-        } else assert.equal(data.stocks.length, 100);
+        } else assert.equal(data.stocks.length, 10);
         readCounts[name]++; reads.push(performance.now() - began);
       } catch (error) { recordError(error); }
       await sleep(40);
@@ -108,8 +108,8 @@ try {
   await sleep(250); const cleaned = await get(server, '/api/health');
   const report = {
     measuredAt: new Date().toISOString(), node: process.version, platform: `${os.platform()} ${os.arch()}`, cpu: os.cpus()[0].model,
-    durationSeconds: +seconds.toFixed(2), clients: clientCount, stalledClients: 1, symbols: 100, tickIntervalMs: 50,
-    actualTicksPerSecond: +((after.tick - before.tick) / seconds).toFixed(2), quoteUpdatesPerSecond: +((after.tick - before.tick) * 100 / seconds).toFixed(0),
+    durationSeconds: +seconds.toFixed(2), clients: clientCount, stalledClients: 1, symbols: STOCKS.length, tickIntervalMs: 50,
+    actualTicksPerSecond: +((after.tick - before.tick) / seconds).toFixed(2), quoteUpdatesPerSecond: +((after.tick - before.tick) * STOCKS.length / seconds).toFixed(0),
     receivedMB: +(received / 1048576).toFixed(2), deliveredTickEvents: tickEvents,
     readRequests: reads.length, readP50Ms: quantile(reads, .5), readP95Ms: quantile(reads, .95), readP99Ms: quantile(reads, .99),
     orderRequests: writes.length, orderP50Ms: quantile(writes, .5), orderP95Ms: quantile(writes, .95), orderP99Ms: quantile(writes, .99),

@@ -133,7 +133,7 @@ test('drag and horizontal wheel pan the chart and Ctrl+wheel preserves browser z
 });
 test('full history includes the oldest minute and follows new minutes for stocks and index', t => {
   const ui = fixture(t);
-  for (const code of ['005930', 'KPI100']) {
+  for (const code of ['005930', 'KPI10']) {
     const view = series(code,'1m',45001);
     ui.setView(view);
     fire(ui.all,'click');

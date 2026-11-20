@@ -1,4 +1,5 @@
-import { STOCKS } from './market-data.mjs';
+import {tickSize, validPrice} from "./price-grid.mjs";
+import { STOCKS, MARKET_DATA } from './market-data.mjs';
 import { createQuoteFeed, createOrderEntry, fillableQuantity } from './order-entry.mjs';
 import { createCandleHistory, createCandleRenderer, periods } from './candle-chart.mjs';
 import { createChartNavigation } from './chart-navigation.mjs';
@@ -54,7 +55,7 @@ const chartHistory = createCandleHistory(async (code, period, signal) => {
   return response.json();
 }, scheduleRender);
 const paintChart = createCandleRenderer(refs);
-const indexChart = { code: 'KPI100', name: 'KOSPI 100', unit: 0.01, format: indexNumber };
+const indexChart = { code: MARKET_DATA.indexCode, name: MARKET_DATA.indexName, unit: 0.01, format: indexNumber };
 const indexDialog = refs['index-dialog'];
 const stockChartMount = refs['shared-chart'].parentElement;
 const chartNavigation = createChartNavigation(refs, drawChart);
@@ -280,7 +281,7 @@ function render() {
     if (!visibleCodes.has(q.code)) continue;
     const r = stockRows.get(q.code); text(r.price, fmt(q.price)); text(r.change, pct((q.price / q.prev - 1) * 100)); color(r.price, q.price - q.prev); color(r.change, q.price - q.prev);
   }
-  text(refs.rising, up); text(refs.falling, down); text(refs.flat, 100 - up - down);
+  text(refs.rising, up); text(refs.falling, down); text(refs.flat, STOCKS.length - up - down);
   if (state.index) {
     const index = state.index;
     const value = indexNumber.format(index.value);
@@ -311,7 +312,7 @@ function render() {
   text(refs['total-profit'], `${signed(state.account.profit)}원`); color(refs['total-profit'], state.account.profit);
   text(refs['reference-date'], state.reference.length > 10 ? `${date.format(new Date(state.reference))} ${clock.format(new Date(state.reference))}` : state.reference.replaceAll('-', '.'));
   refs['order-price'].min = s.lowerLimit; refs['order-price'].max = s.upperLimit;
-  if (needsPrice) { refs['order-price'].value = s.price; refs['order-price'].step = s.unit; needsPrice = false; }
+  if (needsPrice) { refs['order-price'].value = s.price; needsPrice = false; }
   renderDetail(); estimate();
 }
 function renderDetail() {
@@ -364,7 +365,10 @@ function estimate() {
   }
   text(refs['available-label'], side === 'buy' ? '매수 가능 금액' : '매도 가능 수량');
   text(refs['order-available'], side === 'buy' ? `${fmt(state.account.available)}원` : `${fmt(state.account.positions.find(p => p.code === selected)?.available || 0)}주`);
-  text(refs['price-help'], `${fmt(s.unit)}원 단위 · 호가 클릭으로 가격 입력`);
+  const field = refs['order-price'];
+  const unit = tickSize(field.valueAsNumber || s.price);
+  field.setCustomValidity(!market && field.value && !validPrice(field.valueAsNumber) ? unit.toLocaleString('ko-KR') + '원 단위로 입력하세요.' : '');
+  text(refs['price-help'], `${fmt(unit)}원 단위 · 호가 클릭으로 가격 입력`);
   updateSubmit();
 }
 function formReady() {
